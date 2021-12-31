@@ -1,0 +1,25 @@
+[package]
+name = "smithay-egui"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+egui = "0.16"
+egui_glow = { version = "0.16", default-features = false }
+lazy_static = { version = "1.4.0", optional = true }
+slog = { version = "2.7.0", optional = true }
+
+[dependencies.smithay]
+version = "0.3"
+git = "https://github.com/Smithay/smithay.git"
+rev = "a16c307"
+default-features = false
+features = ["renderer_gl"]
+
+[features]
+default = ["default_fonts", "render_element"]
+# If set, egui will use `include_bytes!` to bundle some fonts.
+# If you plan on specifying your own fonts you may disable this feature.
+default_fonts = ["egui/default_fonts"]
+render_element = ["smithay/desktop", "lazy_static", "slog"]
