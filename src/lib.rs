@@ -108,8 +108,8 @@ impl EguiState {
         }
     }
 
-    pub fn handle_keyboard<B: InputBackend>(&mut self, raw_syms: &[Keysym], pressed: bool, modifiers: ModifiersState) {
-        if let Some(key) = convert_key(raw_syms.iter().copied()) {
+    pub fn handle_keyboard(&mut self, raw_syms: &[Keysym], pressed: bool, modifiers: ModifiersState) {
+        if let Some(key) = dbg!(convert_key(raw_syms.iter().copied())) {
             self.events.push(Event::Key {
                 key,
                 pressed,
@@ -118,12 +118,12 @@ impl EguiState {
         }
     }
 
-    pub fn handle_pointer_motion<B: InputBackend>(&mut self, position: Point<i32, Logical>) {
+    pub fn handle_pointer_motion(&mut self, position: Point<i32, Logical>) {
         self.last_pointer_position = position;
         self.events.push(Event::PointerMoved(Pos2::new(position.x as f32, position.y as f32)))
     }
 
-    pub fn handle_pointer_button<B: InputBackend>(&mut self, button: MouseButton, pressed: bool, modifiers: ModifiersState) {
+    pub fn handle_pointer_button(&mut self, button: MouseButton, pressed: bool, modifiers: ModifiersState) {
         if let Some(button) = convert_button(button) {
             self.events.push(Event::PointerButton {
                 pos: Pos2::new(self.last_pointer_position.x as f32, self.last_pointer_position.y as f32),
@@ -134,7 +134,7 @@ impl EguiState {
         }
     }
 
-    pub fn handle_pointer_axis<B: InputBackend>(&mut self, x_amount: f64, y_amount: f64) {
+    pub fn handle_pointer_axis(&mut self, x_amount: f64, y_amount: f64) {
         self.events.push(Event::Scroll(Vec2 {
             x: x_amount as f32,
             y: y_amount as f32,
