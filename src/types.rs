@@ -1,10 +1,11 @@
-use std::convert::TryFrom;
+use egui::{Key, Modifiers, PointerButton};
 use smithay::{
     backend::input::MouseButton,
     wayland::seat::{Keysym as KeysymU32, ModifiersState},
 };
-use egui::{Key, Modifiers, PointerButton};
+use std::convert::TryFrom;
 
+/// Converts a set of raw keycodes into [`egui::Key`], if possible.
 pub fn convert_key(keys: impl Iterator<Item = KeysymU32>) -> Option<Key> {
     for sym in keys {
         if let Ok(key) = Keysym(sym).try_into() {
@@ -76,11 +77,14 @@ impl TryFrom<Keysym> for Key {
             KEY_x => X,
             KEY_y => Y,
             KEY_z => Z,
-            _ => { return Err(()); },
+            _ => {
+                return Err(());
+            }
         })
     }
 }
 
+/// Convert from smithay's [`ModifiersState`] to egui's [`Modifiers`]
 pub fn convert_modifiers(modifiers: ModifiersState) -> Modifiers {
     ModifiersWrapper(modifiers).into()
 }
@@ -93,12 +97,21 @@ impl From<ModifiersWrapper> for Modifiers {
             alt: modifiers.0.alt,
             ctrl: modifiers.0.ctrl,
             shift: modifiers.0.shift,
-            mac_cmd: if cfg!(target_os = "macos") { modifiers.0.logo } else { false },
-            command: if cfg!(target_os = "macos") { modifiers.0.logo } else { modifiers.0.ctrl },
+            mac_cmd: if cfg!(target_os = "macos") {
+                modifiers.0.logo
+            } else {
+                false
+            },
+            command: if cfg!(target_os = "macos") {
+                modifiers.0.logo
+            } else {
+                modifiers.0.ctrl
+            },
         }
     }
 }
 
+/// Convert from smithay's [`MouseButton`] to egui's [`PointerButton`], if possible
 pub fn convert_button(button: MouseButton) -> Option<PointerButton> {
     ButtonWrapper(button).try_into().ok()
 }
@@ -113,7 +126,9 @@ impl TryFrom<ButtonWrapper> for PointerButton {
             MouseButton::Left => PointerButton::Primary,
             MouseButton::Middle => PointerButton::Middle,
             MouseButton::Right => PointerButton::Secondary,
-            _ => { return Err(()); },
+            _ => {
+                return Err(());
+            }
         })
     }
 }
