@@ -23,3 +23,14 @@ default = ["default_fonts", "render_element"]
 # If you plan on specifying your own fonts you may disable this feature.
 default_fonts = ["egui/default_fonts"]
 render_element = ["smithay/desktop", "lazy_static", "slog"]
+
+[dev-dependencies]
+anyhow = "1.0"
+egui_demo_lib = "0.16"
+
+[dev-dependencies.smithay]
+version = "0.3"
+git = "https://github.com/Smithay/smithay.git"
+rev = "e41b450"
+default-features = false
+features = ["renderer_gl", "backend_winit"]

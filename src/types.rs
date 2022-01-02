@@ -78,7 +78,7 @@ impl TryFrom<Keysym> for Key {
             KEY_z => Z,
             _ => { return Err(()); },
         })
-    } 
+    }
 }
 
 pub fn convert_modifiers(modifiers: ModifiersState) -> Modifiers {
