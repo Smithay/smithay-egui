@@ -18,9 +18,8 @@ use smithay::{
 #[cfg(feature = "render_element")]
 use smithay::{
     backend::renderer::gles2::{Gles2Error, Gles2Texture},
-    desktop::{space::RenderElement, Space},
+    desktop::space::{RenderElement, SpaceOutputTuple},
     utils::Point,
-    wayland::output::Output as WlOutput,
 };
 
 #[cfg(feature = "render_element")]
@@ -281,7 +280,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
 
     fn accumulated_damage(
         &self,
-        _for_values: Option<(&Space, &WlOutput)>,
+        _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
         vec![Rectangle::from_loc_and_size((0, 0), (i32::MAX, i32::MAX))]
     }
@@ -291,7 +290,6 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         _renderer: &mut Gles2Renderer,
         _frame: &mut Gles2Frame,
         _scale: f64,
-        _location: Point<i32, Logical>,
         _damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
