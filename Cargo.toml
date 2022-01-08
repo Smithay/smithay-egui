@@ -13,7 +13,7 @@ slog = { version = "2.7.0", optional = true }
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "820e67f"
+rev = "139c1fe"
 default-features = false
 features = ["renderer_gl"]
 
@@ -30,6 +30,6 @@ egui_demo_lib = "0.16"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "820e67f"
+rev = "139c1fe"
 default-features = false
 features = ["renderer_gl", "backend_winit"]

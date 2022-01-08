@@ -15,6 +15,8 @@ use smithay::{
     wayland::seat::{Keysym, ModifiersState},
 };
 
+use std::cell::RefCell;
+
 #[cfg(feature = "render_element")]
 use smithay::{
     backend::renderer::gles2::{Gles2Error, Gles2Texture},
@@ -240,24 +242,44 @@ impl EguiState {
     }
 }
 
+struct GlState {
+    context: GlowContext,
+    painter: RefCell<Painter>,
+}
+
+impl Drop for GlState {
+    fn drop(&mut self) {
+        self.painter.borrow_mut().destroy(&self.context);
+    }
+}
+
 impl EguiFrame {
     /// Draw this frame in the currently active GL-context
-    pub unsafe fn draw(&self) -> Result<(), String> {
-        // TODO: cache this somehow
-        let context = GlowContext::from_loader_function(|sym| smithay::backend::egl::get_proc_address(sym));
-        let mut painter = Painter::new(&context, None, "")?;
-        painter.upload_egui_texture(&context, &*self.ctx.font_image());
+    pub unsafe fn draw(&self, r: &Gles2Renderer) -> Result<(), String> {
+        let user_data = r.egl_context().user_data();
+        if user_data.get::<GlState>().is_none() {
+            let context = GlowContext::from_loader_function(|sym| smithay::backend::egl::get_proc_address(sym));
+            let mut painter = Painter::new(&context, None, "")?;
+            painter.upload_egui_texture(&context, &*self.ctx.font_image());
 
+            r.egl_context().user_data().insert_if_missing(|| GlState {
+                context,
+                painter: RefCell::new(painter),
+            });
+        }
+
+        let state = r.egl_context().user_data().get::<GlState>().unwrap();
+        let mut painter = state.painter.borrow_mut();
+        
         painter.paint_meshes(
-            &context,
+            &state.context,
             [self.size.w as u32, self.size.h as u32],
             self.scale as f32,
             self.mesh.clone(),
         );
 
-        context.disable(glow::SCISSOR_TEST);
-        context.disable(glow::BLEND);
-        painter.destroy(&context);
+        state.context.disable(glow::SCISSOR_TEST);
+        state.context.disable(glow::BLEND);
 
         Ok(())
     }
@@ -287,13 +309,13 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
 
     fn draw(
         &self,
-        _renderer: &mut Gles2Renderer,
+        renderer: &mut Gles2Renderer,
         _frame: &mut Gles2Frame,
         _scale: f64,
         _damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
-        if let Err(err) = unsafe { EguiFrame::draw(self) } {
+        if let Err(err) = unsafe { EguiFrame::draw(self, renderer) } {
             slog::error!(log, "egui rendering error: {}", err);
         }
         Ok(())

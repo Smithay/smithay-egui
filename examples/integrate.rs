@@ -135,8 +135,8 @@ fn main() -> Result<()> {
         backend.bind()?;
         let renderer = backend.renderer();
         renderer
-            .render(size, Transform::Flipped180, |_renderer, _frame| {
-                unsafe { frame.draw() }
+            .render(size, Transform::Normal, |renderer, _frame| {
+                unsafe { frame.draw(renderer) }
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;
         backend.submit(None, 1.0)?;
