@@ -1,21 +1,18 @@
 #[deny(missing_docs)]
 
 use egui::{epaint::ClippedMesh, Context, CtxRef, Event, Output, Pos2, RawInput, Rect, Vec2};
-use egui_glow::{
-    glow::{self, Context as GlowContext, HasContext},
-    painter::Painter,
-};
 
 use smithay::{
     backend::{
         input::{Device, DeviceCapability, MouseButton},
-        renderer::gles2::{Gles2Frame, Gles2Renderer},
+        renderer::{
+            Frame,
+            gles2::{Gles2Frame, Gles2Renderer},
+        },
     },
     utils::{Logical, Physical, Rectangle, Size},
     wayland::seat::{Keysym, ModifiersState},
 };
-
-use std::cell::RefCell;
 
 #[cfg(feature = "render_element")]
 use smithay::{
@@ -34,6 +31,7 @@ use std::{
 };
 
 mod types;
+mod rendering;
 pub use self::types::{convert_button, convert_key, convert_modifiers};
 
 #[cfg(feature = "render_element")]
@@ -73,6 +71,7 @@ pub struct EguiFrame {
     scale: f64,
     area: Rect,
     size: Size<i32, Physical>,
+    alpha: f32,
 }
 
 impl EguiState {
@@ -135,7 +134,7 @@ impl EguiState {
         pressed: bool,
         modifiers: ModifiersState,
     ) {
-        if let Some(key) = dbg!(convert_key(raw_syms.iter().copied())) {
+        if let Some(key) = convert_key(raw_syms.iter().copied()) {
             self.events.push(Event::Key {
                 key,
                 pressed,
@@ -205,6 +204,7 @@ impl EguiState {
         area: Rectangle<i32, Logical>,
         size: Size<i32, Physical>,
         scale: f64,
+        alpha: f32,
         start_time: &std::time::Instant,
         modifiers: ModifiersState,
     ) -> EguiFrame {
@@ -237,51 +237,45 @@ impl EguiState {
             mesh: self.ctx.tessellate(shapes),
             scale,
             area: self.ctx.used_rect(),
+            alpha,
             size,
         }
     }
 }
 
-struct GlState {
-    context: GlowContext,
-    painter: RefCell<Painter>,
-}
-
-impl Drop for GlState {
-    fn drop(&mut self) {
-        self.painter.borrow_mut().destroy(&self.context);
-    }
-}
 
 impl EguiFrame {
     /// Draw this frame in the currently active GL-context
-    pub unsafe fn draw(&self, r: &Gles2Renderer) -> Result<(), String> {
+    pub unsafe fn draw(&self, r: &mut Gles2Renderer, frame: &Gles2Frame) -> Result<(), Gles2Error> {
+        use rendering::GlState;
+
         let user_data = r.egl_context().user_data();
         if user_data.get::<GlState>().is_none() {
-            let context = GlowContext::from_loader_function(|sym| smithay::backend::egl::get_proc_address(sym));
-            let mut painter = Painter::new(&context, None, "")?;
-            painter.upload_egui_texture(&context, &*self.ctx.font_image());
-
-            r.egl_context().user_data().insert_if_missing(|| GlState {
-                context,
-                painter: RefCell::new(painter),
-            });
+            let state = GlState::new(r, self.ctx.font_image())?;
+            r.egl_context().user_data().insert_if_missing(|| state);
         }
 
-        let state = r.egl_context().user_data().get::<GlState>().unwrap();
-        let mut painter = state.painter.borrow_mut();
-        
-        painter.paint_meshes(
-            &state.context,
-            [self.size.w as u32, self.size.h as u32],
-            self.scale as f32,
-            self.mesh.clone(),
-        );
+        r.with_context(|r, gl| unsafe {
+            let state = r.egl_context().user_data().get::<GlState>().unwrap();
+            let transform = frame.transformation();
 
-        state.context.disable(glow::SCISSOR_TEST);
-        state.context.disable(glow::BLEND);
-
-        Ok(())
+            state.paint_meshes(
+                frame,
+                gl,
+                self.size,
+                self.scale,
+                self.mesh.clone().into_iter().map(|ClippedMesh(rect, mesh)| {
+                    let rect = Rectangle::<f64, Physical>::from_extemities((rect.min.x as f64, rect.min.y as f64), (rect.max.x as f64, rect.max.y as f64));
+                    let rect = transform.transform_rect_in(rect, &self.size.to_f64());
+                    ClippedMesh(Rect {
+                        min: (rect.loc.x as f32, rect.loc.y as f32).into(),
+                        max: ((rect.loc.x + rect.size.w) as f32, (rect.loc.y + rect.size.h) as f32).into(),
+                    }, mesh)
+                }),
+                self.alpha,
+            )
+        })
+        .and_then(std::convert::identity)
     }
 }
 
@@ -304,18 +298,21 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
-        vec![Rectangle::from_loc_and_size((0, 0), (i32::MAX, i32::MAX))]
+        vec![Rectangle::from_extemities(
+            (self.area.min.x as f64, self.area.min.y as f64),
+            (self.area.max.x as f64, self.area.max.y as f64)
+        ).to_i32_round()]
     }
 
     fn draw(
         &self,
         renderer: &mut Gles2Renderer,
-        _frame: &mut Gles2Frame,
+        frame: &mut Gles2Frame,
         _scale: f64,
         _damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
-        if let Err(err) = unsafe { EguiFrame::draw(self, renderer) } {
+        if let Err(err) = unsafe { EguiFrame::draw(self, renderer, frame) } {
             slog::error!(log, "egui rendering error: {}", err);
         }
         Ok(())

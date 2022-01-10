@@ -6,14 +6,14 @@ license = "MIT"
 
 [dependencies]
 egui = "0.16"
-egui_glow = { version = "0.16", default-features = false }
+memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
 slog = { version = "2.7.0", optional = true }
 
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "139c1fe"
+branch = "feature/egl_userdata"
 default-features = false
 features = ["renderer_gl"]
 
@@ -26,10 +26,14 @@ render_element = ["smithay/desktop", "lazy_static", "slog"]
 [dev-dependencies]
 anyhow = "1.0"
 egui_demo_lib = "0.16"
+slog = "2.7"
+slog-term = "2.8"
+slog-scope = "4.4"
+slog-stdlog = "4.1"
 
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "139c1fe"
+branch = "feature/egl_userdata"
 default-features = false
-features = ["renderer_gl", "backend_winit"]
+features = ["renderer_gl", "backend_winit", "slog-stdlog"]
