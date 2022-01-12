@@ -69,7 +69,7 @@ pub struct EguiFrame {
     _output: Output,
     mesh: Vec<ClippedMesh>,
     scale: f64,
-    area: Rect,
+    area: Rectangle<i32, Physical>,
     size: Size<i32, Physical>,
     alpha: f32,
 }
@@ -236,7 +236,7 @@ impl EguiState {
             _output,
             mesh: self.ctx.tessellate(shapes),
             scale,
-            area: self.ctx.used_rect(),
+            area,
             alpha,
             size,
         }
@@ -286,22 +286,20 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
     }
 
     fn geometry(&self) -> Rectangle<i32, Logical> {
+        let area = self.area.to_f64();
+
+        let used = self.ctx.used_rect();
         Rectangle::<f64, Physical>::from_extemities(
-            (self.area.min.x as f64, self.area.min.y as f64),
-            (self.area.max.x as f64, self.area.max.y as f64),
-        )
-        .to_logical(self.scale)
-        .to_i32_round()
+            Point::<f64, Physical>::from((used.min.x as f64 - 30.0, used.min.y as f64 - 30.0)) + area.loc,
+            (used.max.x as f64 + 30.0, used.max.y as f64 + 30.0),
+        ).to_logical(self.scale).to_i32_round()
     }
 
     fn accumulated_damage(
         &self,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
-        vec![Rectangle::from_extemities(
-            (self.area.min.x as f64, self.area.min.y as f64),
-            (self.area.max.x as f64, self.area.max.y as f64)
-        ).to_i32_round()]
+        vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
     }
 
     fn draw(
