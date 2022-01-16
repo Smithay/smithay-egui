@@ -43,7 +43,7 @@ lazy_static::lazy_static! {
 #[cfg(feature = "render_element")]
 fn next_id() -> usize {
     let mut ids = EGUI_IDS.lock().unwrap();
-    debug_assert!(!(ids.len() == usize::MAX));
+    debug_assert!(ids.len() != usize::MAX);
     let mut id = EGUI_ID.fetch_add(1, Ordering::SeqCst);
     while ids.iter().any(|k| *k == id) {
         id = EGUI_ID.fetch_add(1, Ordering::SeqCst);
