@@ -166,6 +166,7 @@ impl GlState {
 
         gl.BindVertexArray(0);
         gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, 0);
+        gl.BindBuffer(ffi::ARRAY_BUFFER, 0);
         gl.Disable(ffi::SCISSOR_TEST);
 
         Ok(())
