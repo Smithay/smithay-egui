@@ -1,11 +1,11 @@
 use anyhow::Result;
 use smithay::{
     backend::{
-        renderer::{Renderer, Frame, Transform},
+        renderer::{Renderer, Frame},
         winit,
     },
     reexports::wayland_server::Display,
-    utils::Rectangle,
+    utils::{Rectangle, Transform},
     wayland::{
         seat::{FilterResult, ModifiersState, Seat, XkbConfig},
         SERIAL_COUNTER,

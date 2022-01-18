@@ -13,7 +13,7 @@ slog = { version = "2.7.0", optional = true }
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-branch = "feature/egl_userdata"
+rev = "92d04ba8"
 default-features = false
 features = ["renderer_gl"]
 
@@ -34,6 +34,6 @@ slog-stdlog = "4.1"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-branch = "feature/egl_userdata"
+rev = "92d04ba8"
 default-features = false
 features = ["renderer_gl", "backend_winit", "slog-stdlog"]
