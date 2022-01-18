@@ -74,7 +74,7 @@ fn main() -> Result<()> {
                             event.time(),
                             |new_modifiers, handle| {
                                 egui.handle_keyboard(
-                                    handle.raw_syms(),
+                                    &handle,
                                     event.state() == KeyState::Pressed,
                                     new_modifiers.clone(),
                                 );
