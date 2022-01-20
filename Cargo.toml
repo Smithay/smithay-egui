@@ -14,7 +14,7 @@ xkbcommon = "0.4"
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "92d04ba8"
+rev = "e019b4fa"
 default-features = false
 features = ["renderer_gl"]
 
@@ -35,6 +35,6 @@ slog-stdlog = "4.1"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "92d04ba8"
+rev = "e019b4fa"
 default-features = false
 features = ["renderer_gl", "backend_winit", "slog-stdlog"]
