@@ -1,7 +1,7 @@
 use anyhow::Result;
 use smithay::{
     backend::{
-        renderer::{Renderer, Frame},
+        renderer::{Frame, Renderer},
         winit,
     },
     reexports::wayland_server::Display,
@@ -88,7 +88,7 @@ fn main() -> Result<()> {
                     InputEvent::PointerMotionAbsolute { event } => egui.handle_pointer_motion(
                         event
                             .position_transformed(backend.window_size().physical_size.to_logical(1))
-                            .to_i32_round()
+                            .to_i32_round(),
                     ),
                     // NOTE: you should check with `EguiState::wwants_pointer`, if the pointer is above any egui element before forwarding it.
                     // Otherwise forward it to clients as usual.
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
                 _ => {}
             }
         })?;
-        
+
         let size = backend.window_size().physical_size;
 
         // Here we compute the rendered egui frame
@@ -139,7 +139,10 @@ fn main() -> Result<()> {
         let renderer = backend.renderer();
         renderer
             .render(size, Transform::Flipped180, |renderer, frame| {
-                frame.clear([1.0, 1.0, 1.0, 1.0], &[Rectangle::from_loc_and_size((0, 0), size)])?;
+                frame.clear(
+                    [1.0, 1.0, 1.0, 1.0],
+                    &[Rectangle::from_loc_and_size((0, 0), size)],
+                )?;
                 unsafe { egui_frame.draw(renderer, frame, (0, 0).into()) }
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;

@@ -31,10 +31,7 @@ impl KbdInternal {
             xkb::KEYMAP_COMPILE_NO_FLAGS,
         )?;
         let state = xkb::State::new(&keymap);
-        Some(KbdInternal {
-            keymap,
-            state,
-        })
+        Some(KbdInternal { keymap, state })
     }
 
     // return true if modifier state has changed
