@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
+cgmath = "0.18"
 egui = "0.16"
 memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
@@ -14,7 +15,7 @@ xkbcommon = "0.4"
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "e019b4fa"
+rev = "8558253b"
 default-features = false
 features = ["renderer_gl"]
 
@@ -35,6 +36,6 @@ slog-stdlog = "4.1"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "e019b4fa"
+rev = "8558253b"
 default-features = false
 features = ["renderer_gl", "backend_winit", "slog-stdlog"]

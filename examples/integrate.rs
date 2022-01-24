@@ -140,7 +140,7 @@ fn main() -> Result<()> {
         renderer
             .render(size, Transform::Flipped180, |renderer, frame| {
                 frame.clear([1.0, 1.0, 1.0, 1.0], &[Rectangle::from_loc_and_size((0, 0), size)])?;
-                unsafe { egui_frame.draw(renderer, frame) }
+                unsafe { egui_frame.draw(renderer, frame, (0, 0).into()) }
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;
         backend.submit(None, 1.0)?;

@@ -267,7 +267,7 @@ impl EguiState {
 
 impl EguiFrame {
     /// Draw this frame in the currently active GL-context
-    pub unsafe fn draw(&self, r: &mut Gles2Renderer, frame: &Gles2Frame) -> Result<(), Gles2Error> {
+    pub unsafe fn draw(&self, r: &mut Gles2Renderer, frame: &Gles2Frame, location: Point<i32, Physical>) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
         let user_data = r.egl_context().user_data();
@@ -283,6 +283,7 @@ impl EguiFrame {
             state.paint_meshes(
                 frame,
                 gl,
+                location,
                 self.size,
                 self.scale,
                 self.mesh.clone().into_iter().map(|ClippedMesh(rect, mesh)| {
@@ -327,11 +328,12 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         renderer: &mut Gles2Renderer,
         frame: &mut Gles2Frame,
-        _scale: f64,
+        scale: f64,
+        location: Point<i32, Logical>,
         _damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
-        if let Err(err) = unsafe { EguiFrame::draw(self, renderer, frame) } {
+        if let Err(err) = unsafe { EguiFrame::draw(self, renderer, frame, location.to_f64().to_physical(scale).to_i32_round()) } {
             slog::error!(log, "egui rendering error: {}", err);
         }
         Ok(())

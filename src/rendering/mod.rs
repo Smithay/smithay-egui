@@ -5,8 +5,9 @@ use smithay::{
         Gles2Frame,
         Gles2Error,
     },
-    utils::{Rectangle, Size, Physical},
+    utils::{Rectangle, Point, Size, Physical},
 };
+use cgmath::Matrix3;
 use egui::{epaint::{FontImage, Rect, Mesh, Vertex}, ClippedMesh, TextureId};
 use std::{
     ffi::CStr,
@@ -133,6 +134,7 @@ impl GlState {
         &self,
         frame: &Gles2Frame,
         gl: &ffi::Gles2,
+        location: Point<i32, Physical>,
         size: Size<i32, Physical>,
         scale: f64,
         clipped_meshes: impl Iterator<Item=ClippedMesh>,
@@ -149,11 +151,15 @@ impl GlState {
         );
 
         gl.UseProgram(self.program.program);
+
+        let projection = Into::<&'_ Matrix3<f32>>::into(frame.projection());
+        let matrix: Matrix3<f32> = projection * Matrix3::from_translation([location.x as f32, location.y as f32].into());
+        let matrix_ref: &[f32; 9] = matrix.as_ref();
         gl.UniformMatrix3fv(
             self.program.u_matrix,
             1,
             ffi::FALSE,
-            frame.projection().as_ptr(),
+            matrix_ref.as_ptr(),
         );
         gl.Uniform1f(self.program.u_alpha, alpha);
         gl.Uniform1i(self.program.u_sampler, 0);
