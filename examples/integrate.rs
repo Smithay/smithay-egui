@@ -132,6 +132,7 @@ fn main() -> Result<()> {
             1.0,
             &start_time,
             modifiers.borrow().clone(),
+            0,
         );
 
         // Lastly put the rendered frame on the screen

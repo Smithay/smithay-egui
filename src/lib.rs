@@ -5,19 +5,18 @@ use smithay::{
     backend::{
         input::{Device, DeviceCapability, MouseButton},
         renderer::{
-            gles2::{Gles2Frame, Gles2Renderer},
+            gles2::{Gles2Error, Gles2Frame, Gles2Renderer},
             Frame,
         },
     },
-    utils::{Logical, Physical, Rectangle, Size},
+    utils::{Logical, Physical, Point, Rectangle, Size},
     wayland::seat::{KeysymHandle, ModifiersState},
 };
 
 #[cfg(feature = "render_element")]
 use smithay::{
-    backend::renderer::gles2::{Gles2Error, Gles2Texture},
+    backend::renderer::gles2::Gles2Texture,
     desktop::space::{RenderElement, SpaceOutputTuple},
-    utils::Point,
 };
 
 #[cfg(feature = "render_element")]
@@ -55,6 +54,7 @@ fn next_id() -> usize {
 
 /// Global smithay-egui state
 pub struct EguiState {
+    #[cfg(feature = "render_element")]
     id: usize,
     ctx: CtxRef,
     pointers: usize,
@@ -65,20 +65,25 @@ pub struct EguiState {
 
 /// A single rendered egui interface frame
 pub struct EguiFrame {
+    #[cfg(feature = "render_element")]
     state_id: usize,
     ctx: CtxRef,
     _output: Output,
     mesh: Vec<ClippedMesh>,
     scale: f64,
+    #[cfg(feature = "render_element")]
     area: Rectangle<i32, Physical>,
     size: Size<i32, Physical>,
     alpha: f32,
+    #[cfg(feature = "render_element")]
+    z_index: u8,
 }
 
 impl EguiState {
     /// Creates a new `EguiState`
     pub fn new() -> EguiState {
         EguiState {
+            #[cfg(feature = "render_element")]
             id: next_id(),
             ctx: CtxRef::default(),
             pointers: 0,
@@ -218,6 +223,7 @@ impl EguiState {
     /// - `scale` is the scale egui should render in
     /// - `start_time` need to be a fixed point in time before the first `run` call to measure animation-times and the like.
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
+    /// - `z_index` when using the returned EguiFrame as a `RenderElement` this z_index will be used for ordering.
     pub fn run(
         &mut self,
         ui: impl FnOnce(&CtxRef),
@@ -227,6 +233,8 @@ impl EguiState {
         alpha: f32,
         start_time: &std::time::Instant,
         modifiers: ModifiersState,
+        #[allow(unused_variables)] // This is only used if render_element is enabled
+        z_index: u8,
     ) -> EguiFrame {
         let area = area.to_f64().to_physical(scale).to_i32_round::<i32>();
         let input = RawInput {
@@ -251,14 +259,18 @@ impl EguiState {
 
         let (_output, shapes) = self.ctx.run(input, ui);
         EguiFrame {
+            #[cfg(feature = "render_element")]
             state_id: self.id,
             ctx: self.ctx.clone(),
             _output,
             mesh: self.ctx.tessellate(shapes),
             scale,
+            #[cfg(feature = "render_element")]
             area,
             alpha,
             size,
+            #[cfg(feature = "render_element")]
+            z_index,
         }
     }
 }
@@ -363,5 +375,9 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
             slog::error!(log, "egui rendering error: {}", err);
         }
         Ok(())
+    }
+
+    fn z_index(&self) -> u8 {
+        self.z_index
     }
 }

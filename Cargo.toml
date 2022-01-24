@@ -17,7 +17,7 @@ version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
 rev = "8558253b"
 default-features = false
-features = ["renderer_gl"]
+features = ["renderer_gl", "wayland_frontend"]
 
 [features]
 default = ["default_fonts", "render_element"]
