@@ -63,6 +63,7 @@ pub struct EguiState {
     kbd: Option<text::KbdInternal>,
     #[cfg(feature = "render_element")]
     z_index: u8,
+    reactive_mode: bool,
 }
 
 /// A single rendered egui interface frame
@@ -70,7 +71,7 @@ pub struct EguiFrame {
     #[cfg(feature = "render_element")]
     state_id: usize,
     ctx: CtxRef,
-    _output: Output,
+    output: Output,
     mesh: Vec<ClippedMesh>,
     scale: f64,
     #[cfg(feature = "render_element")]
@@ -79,6 +80,7 @@ pub struct EguiFrame {
     alpha: f32,
     #[cfg(feature = "render_element")]
     z_index: u8,
+    reactive_mode: bool,
 }
 
 impl EguiState {
@@ -100,6 +102,7 @@ impl EguiState {
             },
             #[cfg(feature = "render_element")]
             z_index: RenderZindex::Overlay as u8,
+            reactive_mode: false,
         }
     }
 
@@ -258,12 +261,12 @@ impl EguiState {
             dropped_files: Vec::with_capacity(0),
         };
 
-        let (_output, shapes) = self.ctx.run(input, ui);
+        let (output, shapes) = self.ctx.run(input, ui);
         EguiFrame {
             #[cfg(feature = "render_element")]
             state_id: self.id,
             ctx: self.ctx.clone(),
-            _output,
+            output,
             mesh: self.ctx.tessellate(shapes),
             scale,
             #[cfg(feature = "render_element")]
@@ -272,6 +275,7 @@ impl EguiState {
             size,
             #[cfg(feature = "render_element")]
             z_index: self.z_index,
+            reactive_mode: self.reactive_mode,
         }
     }
 
@@ -280,6 +284,17 @@ impl EguiState {
     #[cfg(feature = "render_element")]
     pub fn set_zindex(&mut self, index: u8) {
         self.z_index = index;
+    }
+
+    /// Enables reactive mode in egui, ui elements will be only redraw on input events or
+    /// when requested by using `[CtxRef::request_repaint]`
+    pub fn enable_reactive_mode(&mut self) {
+        self.reactive_mode = true;
+    }
+
+    /// Disables reactive mode in egui, ui elements are redraw on every draw
+    pub fn disable_reactive_mode(&mut self) {
+        self.reactive_mode = true;
     }
 }
 
@@ -359,7 +374,11 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
-        vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
+        if self.reactive_mode && !self.output.needs_repaint {
+            vec![]
+        } else {
+            vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
+        }
     }
 
     fn draw(
