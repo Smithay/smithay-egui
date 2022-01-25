@@ -340,9 +340,9 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
 
         let used = self.ctx.used_rect();
         Rectangle::<f64, Physical>::from_extemities(
-            Point::<f64, Physical>::from((used.min.x as f64 - 30.0, used.min.y as f64 - 30.0))
+            Point::<f64, Physical>::from((used.min.x as f64, used.min.y as f64))
                 + area.loc,
-            (used.max.x as f64 + 30.0, used.max.y as f64 + 30.0),
+            (used.max.x as f64, used.max.y as f64),
         )
         .to_logical(self.scale)
         .to_i32_round()
