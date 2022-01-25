@@ -16,7 +16,7 @@ use smithay::{
 #[cfg(feature = "render_element")]
 use smithay::{
     backend::renderer::gles2::Gles2Texture,
-    desktop::space::{RenderElement, SpaceOutputTuple},
+    desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple},
 };
 
 #[cfg(feature = "render_element")]
@@ -61,6 +61,8 @@ pub struct EguiState {
     last_pointer_position: Point<i32, Logical>,
     events: Vec<Event>,
     kbd: Option<text::KbdInternal>,
+    #[cfg(feature = "render_element")]
+    z_index: u8,
 }
 
 /// A single rendered egui interface frame
@@ -96,6 +98,8 @@ impl EguiState {
                     None
                 }
             },
+            #[cfg(feature = "render_element")]
+            z_index: RenderZindex::Overlay as u8,
         }
     }
 
@@ -223,7 +227,6 @@ impl EguiState {
     /// - `scale` is the scale egui should render in
     /// - `start_time` need to be a fixed point in time before the first `run` call to measure animation-times and the like.
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
-    /// - `z_index` when using the returned EguiFrame as a `RenderElement` this z_index will be used for ordering.
     pub fn run(
         &mut self,
         ui: impl FnOnce(&CtxRef),
@@ -233,8 +236,6 @@ impl EguiState {
         alpha: f32,
         start_time: &std::time::Instant,
         modifiers: ModifiersState,
-        #[allow(unused_variables)] // This is only used if render_element is enabled
-        z_index: u8,
     ) -> EguiFrame {
         let area = area.to_f64().to_physical(scale).to_i32_round::<i32>();
         let input = RawInput {
@@ -270,8 +271,15 @@ impl EguiState {
             alpha,
             size,
             #[cfg(feature = "render_element")]
-            z_index,
+            z_index: self.z_index,
         }
+    }
+
+    /// Sets the z_index that is used by future `EguiFrame`s produced by this states
+    /// [`EguiState::run`], when used as a `RenderElement`.
+    #[cfg(feature = "render_element")]
+    pub fn set_zindex(&mut self, index: u8) {
+        self.z_index = index;
     }
 }
 
@@ -340,8 +348,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
 
         let used = self.ctx.used_rect();
         Rectangle::<f64, Physical>::from_extemities(
-            Point::<f64, Physical>::from((used.min.x as f64, used.min.y as f64))
-                + area.loc,
+            Point::<f64, Physical>::from((used.min.x as f64, used.min.y as f64)) + area.loc,
             (used.max.x as f64, used.max.y as f64),
         )
         .to_logical(self.scale)
