@@ -232,17 +232,22 @@ impl GlState {
                 ffi::STREAM_DRAW,
             );
 
-            // That is not need now? If we remove that from it it makes the argument size and scale for upper function
-            // also not need, is that right?
             let screen_space = Rectangle::from_loc_and_size((0, 0), size);
 
             let scissor_box: Rectangle<i32, Physical> = clip_rect
+                .intersection(damage.to_f64())
+                .unwrap()
                 .to_physical(scale)
                 .intersection(screen_space.to_f64())
                 .unwrap()
                 .to_i32_round();
 
-            gl.Scissor(damage.loc.x, damage.loc.y, damage.size.w, damage.size.h);
+            gl.Scissor(
+                scissor_box.loc.x,
+                scissor_box.loc.y,
+                scissor_box.size.w,
+                scissor_box.size.h,
+            );
             gl.DrawElements(
                 ffi::TRIANGLES,
                 mesh.indices.len() as i32,
