@@ -310,6 +310,7 @@ impl EguiFrame {
         r: &mut Gles2Renderer,
         frame: &Gles2Frame,
         location: Point<i32, Physical>,
+        damage: &[Rectangle<i32, Logical>],
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
@@ -327,6 +328,7 @@ impl EguiFrame {
                 frame,
                 gl,
                 location,
+                damage,
                 self.size,
                 self.scale,
                 self.mesh
@@ -392,7 +394,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         frame: &mut Gles2Frame,
         scale: f64,
         location: Point<i32, Logical>,
-        _damage: &[Rectangle<i32, Logical>],
+        damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
         if let Err(err) = unsafe {
@@ -401,6 +403,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 renderer,
                 frame,
                 location.to_f64().to_physical(scale).to_i32_round(),
+                damage,
             )
         } {
             slog::error!(log, "egui rendering error: {}", err);
