@@ -52,6 +52,17 @@ fn next_id() -> usize {
     id
 }
 
+/// Enum representing egui render mode
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum EguiMode {
+    /// In this mode `EguiFrame` reports damage only when a input is passed to `EguiState`
+    /// or a widget uses `[CtxRef::request_repaint]`
+    Reactive,
+    /// In this mode `EguiFrame` reports full damage on every draw
+    /// The full EguiState is redraw on every draw
+    Continuous,
+}
+
 /// Global smithay-egui state
 pub struct EguiState {
     #[cfg(feature = "render_element")]
@@ -63,7 +74,7 @@ pub struct EguiState {
     kbd: Option<text::KbdInternal>,
     #[cfg(feature = "render_element")]
     z_index: u8,
-    reactive_mode: bool,
+    mode: EguiMode,
 }
 
 /// A single rendered egui interface frame
@@ -80,12 +91,12 @@ pub struct EguiFrame {
     alpha: f32,
     #[cfg(feature = "render_element")]
     z_index: u8,
-    reactive_mode: bool,
+    mode: EguiMode,
 }
 
 impl EguiState {
     /// Creates a new `EguiState`
-    pub fn new() -> EguiState {
+    pub fn new(mode: EguiMode) -> EguiState {
         EguiState {
             #[cfg(feature = "render_element")]
             id: next_id(),
@@ -102,7 +113,7 @@ impl EguiState {
             },
             #[cfg(feature = "render_element")]
             z_index: RenderZindex::Overlay as u8,
-            reactive_mode: false,
+            mode,
         }
     }
 
@@ -275,7 +286,7 @@ impl EguiState {
             size,
             #[cfg(feature = "render_element")]
             z_index: self.z_index,
-            reactive_mode: self.reactive_mode,
+            mode: self.mode,
         }
     }
 
@@ -286,15 +297,9 @@ impl EguiState {
         self.z_index = index;
     }
 
-    /// Enables reactive mode in egui, ui elements will be only redraw on input events or
-    /// when requested by using `[CtxRef::request_repaint]`
-    pub fn enable_reactive_mode(&mut self) {
-        self.reactive_mode = true;
-    }
-
-    /// Disables reactive mode in egui, ui elements are redraw on every draw
-    pub fn disable_reactive_mode(&mut self) {
-        self.reactive_mode = true;
+    /// Sets the drawing mode of EguiState, refer to `EguiMode`
+    pub fn set_mode(&mut self, mode: EguiMode) {
+        self.mode = mode;
     }
 }
 
@@ -374,7 +379,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
-        if self.reactive_mode && !self.output.needs_repaint {
+        if self.mode == EguiMode::Reactive && !self.output.needs_repaint {
             vec![]
         } else {
             vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
