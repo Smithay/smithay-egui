@@ -208,7 +208,10 @@ impl GlState {
         )
         .to_f64();
 
-        if let Some(damage) = damage.iter().find(|d| d.overlaps(clip_rect.to_i32_round())) {
+        for damage in damage
+            .iter()
+            .filter(|d| d.overlaps(clip_rect.to_i32_round()))
+        {
             let texture = match mesh.texture_id {
                 TextureId::Egui => self.egui_texture,
                 TextureId::User(_) => unimplemented!(),
