@@ -311,6 +311,7 @@ impl EguiFrame {
         frame: &Gles2Frame,
         location: Point<i32, Physical>,
         damage: &[Rectangle<i32, Logical>],
+        geometry: Rectangle<i32, Logical>,
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
@@ -329,6 +330,7 @@ impl EguiFrame {
                 gl,
                 location,
                 damage,
+                geometry,
                 self.size,
                 self.scale,
                 self.mesh
@@ -404,6 +406,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 frame,
                 location.to_f64().to_physical(scale).to_i32_round(),
                 damage,
+                self.geometry(),
             )
         } {
             slog::error!(log, "egui rendering error: {}", err);

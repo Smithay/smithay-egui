@@ -148,6 +148,7 @@ impl GlState {
         gl: &ffi::Gles2,
         location: Point<i32, Physical>,
         damage: &[Rectangle<i32, Logical>],
+        geometry: Rectangle<i32, Logical>,
         size: Size<i32, Physical>,
         scale: f64,
         clipped_meshes: impl Iterator<Item = ClippedMesh>,
@@ -180,6 +181,21 @@ impl GlState {
         let mut damage = Vec::from(damage);
 
         damage.dedup();
+        damage.retain(|rect| rect.overlaps(geometry));
+        damage.retain(|rect| rect.size.h > 0 && rect.size.w > 0);
+        // merge overlapping rectangles
+        damage = damage.into_iter().fold(Vec::new(), |new_damage, mut rect| {
+            // replace with drain_filter, when that becomes stable to reuse the original Vec's memory
+            let (overlapping, mut new_damage): (Vec<_>, Vec<_>) = new_damage
+                .into_iter()
+                .partition(|other| other.overlaps(rect));
+
+            for overlap in overlapping {
+                rect = rect.merge(overlap);
+            }
+            new_damage.push(rect);
+            new_damage
+        });
 
         for ClippedMesh(clip_rect, mesh) in clipped_meshes {
             self.paint_mesh(gl, &clip_rect, &mesh, size, scale, &damage)?;
