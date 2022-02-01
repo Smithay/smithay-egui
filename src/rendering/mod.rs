@@ -5,7 +5,6 @@ use egui::{
 };
 use smithay::{
     backend::renderer::gles2::{ffi, Gles2Error, Gles2Frame, Gles2Renderer},
-    nix::sys::socket::sockopt::ReceiveTimeout,
     utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use std::{ffi::CStr, os::raw::c_char, sync::Arc};
