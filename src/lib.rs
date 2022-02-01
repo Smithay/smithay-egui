@@ -311,7 +311,6 @@ impl EguiFrame {
         frame: &Gles2Frame,
         location: Point<i32, Physical>,
         damage: &[Rectangle<i32, Logical>],
-        geometry: Rectangle<i32, Logical>,
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
@@ -330,7 +329,7 @@ impl EguiFrame {
                 gl,
                 location,
                 damage,
-                geometry,
+                self.geometry(),
                 self.size,
                 self.scale,
                 self.mesh
@@ -359,15 +358,8 @@ impl EguiFrame {
         })
         .and_then(std::convert::identity)
     }
-}
 
-#[cfg(feature = "render_element")]
-impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for EguiFrame {
-    fn id(&self) -> usize {
-        self.state_id
-    }
-
-    fn geometry(&self) -> Rectangle<i32, Logical> {
+    pub fn geometry(&self) -> Rectangle<i32, Logical> {
         let area = self.area.to_f64();
 
         let used = self.ctx.used_rect();
@@ -377,6 +369,17 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         )
         .to_logical(self.scale)
         .to_i32_round()
+    }
+}
+
+#[cfg(feature = "render_element")]
+impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for EguiFrame {
+    fn id(&self) -> usize {
+        self.state_id
+    }
+
+    fn geometry(&self) -> Rectangle<i32, Logical> {
+        EguiFrame::geometry(self)
     }
 
     fn accumulated_damage(
@@ -406,7 +409,6 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 frame,
                 location.to_f64().to_physical(scale).to_i32_round(),
                 damage,
-                self.geometry(),
             )
         } {
             slog::error!(log, "egui rendering error: {}", err);

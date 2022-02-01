@@ -150,7 +150,6 @@ fn main() -> Result<()> {
                         frame,
                         (0, 0).into(),
                         &[Rectangle::from_loc_and_size((0, 0), size).to_logical(1)],
-                        egui_frame.geometry(),
                     )
                 }
             })?
