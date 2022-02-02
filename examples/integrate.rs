@@ -4,6 +4,7 @@ use smithay::{
         renderer::{Frame, Renderer},
         winit,
     },
+    desktop::space::RenderElement,
     reexports::wayland_server::Display,
     utils::{Rectangle, Transform},
     wayland::{
@@ -11,7 +12,7 @@ use smithay::{
         SERIAL_COUNTER,
     },
 };
-use smithay_egui::EguiState;
+use smithay_egui::{EguiMode, EguiState};
 use std::cell::RefCell;
 
 // This example provides a minimal example to:
@@ -31,7 +32,7 @@ fn main() -> Result<()> {
     // create a winit-backend
     let (mut backend, mut input) = winit::init(None)?;
     // create an `EguiState`. Usually this would be part of your global smithay state
-    let mut egui = EguiState::new();
+    let mut egui = EguiState::new(EguiMode::Reactive);
     // you might also need additional structs to store your ui-state, like the demo_lib does
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
     // this is likely already part of your ui-state for `send_frames` and similar
@@ -143,7 +144,14 @@ fn main() -> Result<()> {
                     [1.0, 1.0, 1.0, 1.0],
                     &[Rectangle::from_loc_and_size((0, 0), size)],
                 )?;
-                unsafe { egui_frame.draw(renderer, frame, (0, 0).into()) }
+                unsafe {
+                    egui_frame.draw(
+                        renderer,
+                        frame,
+                        (0, 0).into(),
+                        &[Rectangle::from_loc_and_size((0, 0), size).to_logical(1)],
+                    )
+                }
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;
         backend.submit(None, 1.0)?;

@@ -5,7 +5,7 @@ use egui::{
 };
 use smithay::{
     backend::renderer::gles2::{ffi, Gles2Error, Gles2Frame, Gles2Renderer},
-    utils::{Physical, Point, Rectangle, Size},
+    utils::{Logical, Physical, Point, Rectangle, Size},
 };
 use std::{ffi::CStr, os::raw::c_char, sync::Arc};
 
@@ -147,6 +147,8 @@ impl GlState {
         frame: &Gles2Frame,
         gl: &ffi::Gles2,
         location: Point<i32, Physical>,
+        damage: &[Rectangle<i32, Logical>],
+        geometry: Rectangle<i32, Logical>,
         size: Size<i32, Physical>,
         scale: f64,
         clipped_meshes: impl Iterator<Item = ClippedMesh>,
@@ -176,8 +178,27 @@ impl GlState {
         gl.ActiveTexture(ffi::TEXTURE0);
         gl.BindVertexArray(self.vertex_array);
 
+        let mut damage = Vec::from(damage);
+
+        damage.dedup();
+        damage.retain(|rect| rect.overlaps(geometry));
+        damage.retain(|rect| rect.size.h > 0 && rect.size.w > 0);
+        // merge overlapping rectangles
+        damage = damage.into_iter().fold(Vec::new(), |new_damage, mut rect| {
+            // replace with drain_filter, when that becomes stable to reuse the original Vec's memory
+            let (overlapping, mut new_damage): (Vec<_>, Vec<_>) = new_damage
+                .into_iter()
+                .partition(|other| other.overlaps(rect));
+
+            for overlap in overlapping {
+                rect = rect.merge(overlap);
+            }
+            new_damage.push(rect);
+            new_damage
+        });
+
         for ClippedMesh(clip_rect, mesh) in clipped_meshes {
-            self.paint_mesh(gl, &clip_rect, &mesh, size, scale)?;
+            self.paint_mesh(gl, &clip_rect, &mesh, size, scale, &damage)?;
         }
 
         gl.BindVertexArray(0);
@@ -195,53 +216,63 @@ impl GlState {
         mesh: &Mesh,
         size: Size<i32, Physical>,
         scale: f64,
+        damage: &[Rectangle<i32, Logical>],
     ) -> Result<(), Gles2Error> {
-        let texture = match mesh.texture_id {
-            TextureId::Egui => self.egui_texture,
-            TextureId::User(_) => unimplemented!(),
-        };
-        gl.BindTexture(ffi::TEXTURE_2D, texture);
-
-        gl.BindBuffer(ffi::ARRAY_BUFFER, self.vertex_buffer);
-        gl.BufferData(
-            ffi::ARRAY_BUFFER,
-            (mesh.vertices.len() * std::mem::size_of::<Vertex>()) as isize,
-            mesh.vertices.as_ptr() as *const _,
-            ffi::STREAM_DRAW,
-        );
-
-        gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
-        gl.BufferData(
-            ffi::ELEMENT_ARRAY_BUFFER,
-            (mesh.indices.len() * std::mem::size_of::<u32>()) as isize,
-            mesh.indices.as_ptr() as *const _,
-            ffi::STREAM_DRAW,
-        );
-
-        let screen_space = Rectangle::from_loc_and_size((0, 0), size);
         let clip_rect = Rectangle::from_extemities(
             (clip_rect.min.x, clip_rect.min.y),
             (clip_rect.max.x, clip_rect.max.y),
-        );
-        let scissor_box = clip_rect
-            .to_f64()
-            .to_physical(scale)
-            .intersection(screen_space.to_f64())
-            .unwrap()
-            .to_i32_round();
+        )
+        .to_f64();
 
-        gl.Scissor(
-            scissor_box.loc.x,
-            scissor_box.loc.y,
-            scissor_box.size.w,
-            scissor_box.size.h,
-        );
-        gl.DrawElements(
-            ffi::TRIANGLES,
-            mesh.indices.len() as i32,
-            ffi::UNSIGNED_INT,
-            std::ptr::null(),
-        );
+        for damage in damage
+            .iter()
+            .filter(|d| d.overlaps(clip_rect.to_i32_round()))
+        {
+            let texture = match mesh.texture_id {
+                TextureId::Egui => self.egui_texture,
+                TextureId::User(_) => unimplemented!(),
+            };
+            gl.BindTexture(ffi::TEXTURE_2D, texture);
+
+            gl.BindBuffer(ffi::ARRAY_BUFFER, self.vertex_buffer);
+            gl.BufferData(
+                ffi::ARRAY_BUFFER,
+                (mesh.vertices.len() * std::mem::size_of::<Vertex>()) as isize,
+                mesh.vertices.as_ptr() as *const _,
+                ffi::STREAM_DRAW,
+            );
+
+            gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
+            gl.BufferData(
+                ffi::ELEMENT_ARRAY_BUFFER,
+                (mesh.indices.len() * std::mem::size_of::<u32>()) as isize,
+                mesh.indices.as_ptr() as *const _,
+                ffi::STREAM_DRAW,
+            );
+
+            let screen_space = Rectangle::from_loc_and_size((0, 0), size);
+
+            let scissor_box: Rectangle<i32, Physical> = clip_rect
+                .intersection(damage.to_f64())
+                .unwrap()
+                .to_physical(scale)
+                .intersection(screen_space.to_f64())
+                .unwrap()
+                .to_i32_round();
+
+            gl.Scissor(
+                scissor_box.loc.x,
+                scissor_box.loc.y,
+                scissor_box.size.w,
+                scissor_box.size.h,
+            );
+            gl.DrawElements(
+                ffi::TRIANGLES,
+                mesh.indices.len() as i32,
+                ffi::UNSIGNED_INT,
+                std::ptr::null(),
+            );
+        }
 
         Ok(())
     }

@@ -52,6 +52,17 @@ fn next_id() -> usize {
     id
 }
 
+/// Enum representing egui render mode
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum EguiMode {
+    /// In this mode `EguiFrame` reports damage only when a input is passed to `EguiState`
+    /// or a widget uses `[CtxRef::request_repaint]`
+    Reactive,
+    /// In this mode `EguiFrame` reports full damage on every draw
+    /// The full EguiState is redraw on every draw
+    Continuous,
+}
+
 /// Global smithay-egui state
 pub struct EguiState {
     #[cfg(feature = "render_element")]
@@ -63,6 +74,7 @@ pub struct EguiState {
     kbd: Option<text::KbdInternal>,
     #[cfg(feature = "render_element")]
     z_index: u8,
+    mode: EguiMode,
 }
 
 /// A single rendered egui interface frame
@@ -70,7 +82,7 @@ pub struct EguiFrame {
     #[cfg(feature = "render_element")]
     state_id: usize,
     ctx: CtxRef,
-    _output: Output,
+    output: Output,
     mesh: Vec<ClippedMesh>,
     scale: f64,
     #[cfg(feature = "render_element")]
@@ -79,11 +91,12 @@ pub struct EguiFrame {
     alpha: f32,
     #[cfg(feature = "render_element")]
     z_index: u8,
+    mode: EguiMode,
 }
 
 impl EguiState {
     /// Creates a new `EguiState`
-    pub fn new() -> EguiState {
+    pub fn new(mode: EguiMode) -> EguiState {
         EguiState {
             #[cfg(feature = "render_element")]
             id: next_id(),
@@ -100,6 +113,7 @@ impl EguiState {
             },
             #[cfg(feature = "render_element")]
             z_index: RenderZindex::Overlay as u8,
+            mode,
         }
     }
 
@@ -258,12 +272,12 @@ impl EguiState {
             dropped_files: Vec::with_capacity(0),
         };
 
-        let (_output, shapes) = self.ctx.run(input, ui);
+        let (output, shapes) = self.ctx.run(input, ui);
         EguiFrame {
             #[cfg(feature = "render_element")]
             state_id: self.id,
             ctx: self.ctx.clone(),
-            _output,
+            output,
             mesh: self.ctx.tessellate(shapes),
             scale,
             #[cfg(feature = "render_element")]
@@ -272,6 +286,7 @@ impl EguiState {
             size,
             #[cfg(feature = "render_element")]
             z_index: self.z_index,
+            mode: self.mode,
         }
     }
 
@@ -280,6 +295,11 @@ impl EguiState {
     #[cfg(feature = "render_element")]
     pub fn set_zindex(&mut self, index: u8) {
         self.z_index = index;
+    }
+
+    /// Sets the drawing mode of EguiState, refer to `EguiMode`
+    pub fn set_mode(&mut self, mode: EguiMode) {
+        self.mode = mode;
     }
 }
 
@@ -290,6 +310,7 @@ impl EguiFrame {
         r: &mut Gles2Renderer,
         frame: &Gles2Frame,
         location: Point<i32, Physical>,
+        damage: &[Rectangle<i32, Logical>],
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
@@ -307,6 +328,8 @@ impl EguiFrame {
                 frame,
                 gl,
                 location,
+                damage,
+                self.geometry(),
                 self.size,
                 self.scale,
                 self.mesh
@@ -335,15 +358,8 @@ impl EguiFrame {
         })
         .and_then(std::convert::identity)
     }
-}
 
-#[cfg(feature = "render_element")]
-impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for EguiFrame {
-    fn id(&self) -> usize {
-        self.state_id
-    }
-
-    fn geometry(&self) -> Rectangle<i32, Logical> {
+    pub fn geometry(&self) -> Rectangle<i32, Logical> {
         let area = self.area.to_f64();
 
         let used = self.ctx.used_rect();
@@ -354,12 +370,27 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         .to_logical(self.scale)
         .to_i32_round()
     }
+}
+
+#[cfg(feature = "render_element")]
+impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for EguiFrame {
+    fn id(&self) -> usize {
+        self.state_id
+    }
+
+    fn geometry(&self) -> Rectangle<i32, Logical> {
+        EguiFrame::geometry(self)
+    }
 
     fn accumulated_damage(
         &self,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Logical>> {
-        vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
+        if self.mode == EguiMode::Reactive && !self.output.needs_repaint {
+            vec![]
+        } else {
+            vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
+        }
     }
 
     fn draw(
@@ -368,7 +399,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         frame: &mut Gles2Frame,
         scale: f64,
         location: Point<i32, Logical>,
-        _damage: &[Rectangle<i32, Logical>],
+        damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
         if let Err(err) = unsafe {
@@ -377,6 +408,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 renderer,
                 frame,
                 location.to_f64().to_physical(scale).to_i32_round(),
+                damage,
             )
         } {
             slog::error!(log, "egui rendering error: {}", err);
