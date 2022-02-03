@@ -4,7 +4,6 @@ use smithay::{
         renderer::{Frame, Renderer},
         winit,
     },
-    desktop::space::RenderElement,
     reexports::wayland_server::Display,
     utils::{Rectangle, Transform},
     wayland::{
@@ -149,7 +148,7 @@ fn main() -> Result<()> {
                         renderer,
                         frame,
                         (0, 0).into(),
-                        &[Rectangle::from_loc_and_size((0, 0), size).to_logical(1)],
+                        &[Rectangle::from_loc_and_size((0, 0), size.to_logical(1))],
                     )
                 }
             })?

@@ -263,7 +263,7 @@ impl EguiState {
                     y: area.loc.y as f32 + area.size.h as f32,
                 },
             }),
-            pixels_per_point: Some(scale as f32),
+            pixels_per_point: Some(scale.ceil() as f32),
             time: Some(start_time.elapsed().as_secs_f64()),
             predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(modifiers),
@@ -309,7 +309,7 @@ impl EguiFrame {
         &self,
         r: &mut Gles2Renderer,
         frame: &Gles2Frame,
-        location: Point<i32, Physical>,
+        location: Point<i32, Logical>,
         damage: &[Rectangle<i32, Logical>],
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
@@ -323,15 +323,18 @@ impl EguiFrame {
         r.with_context(|r, gl| unsafe {
             let state = r.egl_context().user_data().get::<GlState>().unwrap();
             let transform = frame.transformation();
+            let used_rect = self.ctx.used_rect();
 
             state.paint_meshes(
                 frame,
                 gl,
-                location,
-                damage,
-                self.geometry(),
-                self.size,
+                (location.to_f64().to_physical(self.scale) - Point::<f64, Physical>::from((used_rect.min.x as f64, used_rect.min.y as f64))).to_i32_round(),
                 self.scale,
+                &damage
+                    .iter()
+                    .map(|rect| Rectangle::from_loc_and_size(rect.loc + location, rect.size))
+                    .map(|rect| rect.to_buffer(self.scale.ceil() as i32, transform, &self.size.to_logical(self.scale.ceil() as i32)))
+                    .collect::<Vec<_>>(),
                 self.mesh
                     .clone()
                     .into_iter()
@@ -365,7 +368,7 @@ impl EguiFrame {
         let used = self.ctx.used_rect();
         Rectangle::<f64, Physical>::from_extemities(
             Point::<f64, Physical>::from((used.min.x as f64, used.min.y as f64)) + area.loc,
-            (used.max.x as f64, used.max.y as f64),
+            Point::<f64, Physical>::from((used.max.x as f64, used.max.y as f64)) + area.loc,
         )
         .to_logical(self.scale)
         .to_i32_round()
@@ -397,7 +400,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         renderer: &mut Gles2Renderer,
         frame: &mut Gles2Frame,
-        scale: f64,
+        _scale: f64,
         location: Point<i32, Logical>,
         damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
@@ -407,7 +410,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 self,
                 renderer,
                 frame,
-                location.to_f64().to_physical(scale).to_i32_round(),
+                location,
                 damage,
             )
         } {
