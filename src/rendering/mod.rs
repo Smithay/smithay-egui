@@ -1,11 +1,11 @@
 use cgmath::Matrix3;
 use egui::{
-    epaint::{FontImage, Mesh, Rect, Vertex},
+    epaint::{FontImage, Mesh, Vertex},
     ClippedMesh, TextureId,
 };
 use smithay::{
-    backend::renderer::gles2::{ffi, Gles2Error, Gles2Frame, Gles2Renderer},
-    utils::{Physical, Point, Rectangle, Buffer, Transform},
+    backend::renderer::{gles2::{ffi, Gles2Error, Gles2Frame, Gles2Renderer}, Frame},
+    utils::{Physical, Point, Rectangle, Size},
 };
 use std::{ffi::CStr, os::raw::c_char, sync::Arc};
 
@@ -147,8 +147,9 @@ impl GlState {
         frame: &Gles2Frame,
         gl: &ffi::Gles2,
         location: Point<i32, Physical>,
+        area: Size<i32, Physical>,
         scale: f64,
-        damage: &[Rectangle<i32, Buffer>],
+        damage: &[Rectangle<i32, Physical>],
         clipped_meshes: impl Iterator<Item = ClippedMesh>,
         alpha: f32,
     ) -> Result<(), Gles2Error> {
@@ -167,8 +168,9 @@ impl GlState {
         gl.UseProgram(self.program.program);
 
         let projection = Into::<&'_ Matrix3<f32>>::into(frame.projection());
-        let matrix: Matrix3<f32> =
-            projection * Matrix3::from_translation([location.x as f32, location.y as f32].into());
+        let matrix: Matrix3<f32> = projection
+            * Matrix3::from_translation([location.x as f32, location.y as f32].into())
+            * Matrix3::from_scale(scale as f32);
         let matrix_ref: &[f32; 9] = matrix.as_ref();
         gl.UniformMatrix3fv(self.program.u_matrix, 1, ffi::FALSE, matrix_ref.as_ptr());
         gl.Uniform1f(self.program.u_alpha, alpha);
@@ -179,7 +181,7 @@ impl GlState {
         // merge overlapping rectangles
         let damage: Vec<Rectangle<i32, Physical>> = damage
             .into_iter()
-            .map(|rect| rect.to_logical(scale.ceil() as i32, Transform::Normal, &rect.size).to_f64().to_physical(scale).to_i32_round())
+            .cloned()
             .fold(Vec::new(), |new_damage, mut rect| {
                 // replace with drain_filter, when that becomes stable to reuse the original Vec's memory
                 let (overlapping, mut new_damage): (Vec<_>, Vec<_>) = new_damage
@@ -194,7 +196,34 @@ impl GlState {
             });
 
         for ClippedMesh(clip_rect, mesh) in clipped_meshes {
-            self.paint_mesh(gl, &clip_rect, &mesh, &damage)?;
+            let clip_rect = Rectangle::<f64, Physical>::from_extemities(
+                (clip_rect.min.x as f64, clip_rect.min.y as f64),
+                (clip_rect.max.x as f64, clip_rect.max.y as f64),
+            )
+            .to_f64();
+
+            for damage in damage
+                .iter()
+                .map(|d| d.to_f64())
+                .filter(|d| d.overlaps(clip_rect))
+            {
+                let mut scissor_box: Rectangle<i32, Physical> = clip_rect
+                    .intersection(damage)
+                    .unwrap()
+                    .to_logical(1.0)
+                    .to_physical(scale)
+                    .to_i32_round();
+                scissor_box = frame.transformation().transform_rect_in(scissor_box, &area);
+                scissor_box.loc += location;
+
+                gl.Scissor(
+                    std::cmp::max(scissor_box.loc.x, 0),
+                    std::cmp::max(scissor_box.loc.y, 0),
+                    std::cmp::max(scissor_box.size.w, 0),
+                    std::cmp::max(scissor_box.size.h, 0),
+                );
+                self.paint_mesh(gl, &mesh)?;
+            }
         }
 
         gl.BindVertexArray(0);
@@ -208,61 +237,35 @@ impl GlState {
     unsafe fn paint_mesh(
         &self,
         gl: &ffi::Gles2,
-        clip_rect: &Rect,
         mesh: &Mesh,
-        damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), Gles2Error> {
-        let clip_rect = Rectangle::<f64, Physical>::from_extemities(
-            (clip_rect.min.x as f64, clip_rect.min.y as f64),
-            (clip_rect.max.x as f64, clip_rect.max.y as f64),
-        )
-        .to_f64();
+    ) -> Result<(), Gles2Error> { 
+        let texture = match mesh.texture_id {
+            TextureId::Egui => self.egui_texture,
+            TextureId::User(_) => unimplemented!(),
+        };
+        gl.BindTexture(ffi::TEXTURE_2D, texture);
 
-        for damage in damage
-            .iter()
-            .map(|d| d.to_f64())
-            .filter(|d| d.overlaps(clip_rect))
-        {
-            let texture = match mesh.texture_id {
-                TextureId::Egui => self.egui_texture,
-                TextureId::User(_) => unimplemented!(),
-            };
-            gl.BindTexture(ffi::TEXTURE_2D, texture);
+        gl.BindBuffer(ffi::ARRAY_BUFFER, self.vertex_buffer);
+        gl.BufferData(
+            ffi::ARRAY_BUFFER,
+            (mesh.vertices.len() * std::mem::size_of::<Vertex>()) as isize,
+            mesh.vertices.as_ptr() as *const _,
+            ffi::STREAM_DRAW,
+        );
 
-            gl.BindBuffer(ffi::ARRAY_BUFFER, self.vertex_buffer);
-            gl.BufferData(
-                ffi::ARRAY_BUFFER,
-                (mesh.vertices.len() * std::mem::size_of::<Vertex>()) as isize,
-                mesh.vertices.as_ptr() as *const _,
-                ffi::STREAM_DRAW,
-            );
-
-            gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
-            gl.BufferData(
-                ffi::ELEMENT_ARRAY_BUFFER,
-                (mesh.indices.len() * std::mem::size_of::<u32>()) as isize,
-                mesh.indices.as_ptr() as *const _,
-                ffi::STREAM_DRAW,
-            );
-
-            let scissor_box: Rectangle<i32, Physical> = clip_rect
-                .intersection(damage)
-                .unwrap()
-                .to_i32_round();
-
-            gl.Scissor(
-                scissor_box.loc.x,
-                scissor_box.loc.y,
-                scissor_box.size.w,
-                scissor_box.size.h,
-            );
-            gl.DrawElements(
-                ffi::TRIANGLES,
-                mesh.indices.len() as i32,
-                ffi::UNSIGNED_INT,
-                std::ptr::null(),
-            );
-        }
+        gl.BindBuffer(ffi::ELEMENT_ARRAY_BUFFER, self.element_array_buffer);
+        gl.BufferData(
+            ffi::ELEMENT_ARRAY_BUFFER,
+            (mesh.indices.len() * std::mem::size_of::<u32>()) as isize,
+            mesh.indices.as_ptr() as *const _,
+            ffi::STREAM_DRAW,
+        );
+        gl.DrawElements(
+            ffi::TRIANGLES,
+            mesh.indices.len() as i32,
+            ffi::UNSIGNED_INT,
+            std::ptr::null(),
+        );
 
         Ok(())
     }

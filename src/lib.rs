@@ -4,12 +4,9 @@ use egui::{epaint::ClippedMesh, Context, CtxRef, Event, Output, Pos2, RawInput, 
 use smithay::{
     backend::{
         input::{Device, DeviceCapability, MouseButton},
-        renderer::{
-            gles2::{Gles2Error, Gles2Frame, Gles2Renderer},
-            Frame,
-        },
+        renderer::gles2::{Gles2Error, Gles2Frame, Gles2Renderer},
     },
-    utils::{Logical, Physical, Point, Rectangle, Size},
+    utils::{Logical, Physical, Point, Rectangle},
     wayland::seat::{KeysymHandle, ModifiersState},
 };
 
@@ -86,12 +83,12 @@ pub struct EguiFrame {
     mesh: Vec<ClippedMesh>,
     scale: f64,
     #[cfg(feature = "render_element")]
-    area: Rectangle<i32, Physical>,
-    size: Size<i32, Physical>,
+    area: Rectangle<i32, Logical>,
     alpha: f32,
     #[cfg(feature = "render_element")]
     z_index: u8,
     mode: EguiMode,
+    previous: Rect,
 }
 
 impl EguiState {
@@ -245,25 +242,26 @@ impl EguiState {
         &mut self,
         ui: impl FnOnce(&CtxRef),
         area: Rectangle<i32, Logical>,
-        size: Size<i32, Physical>,
         scale: f64,
         alpha: f32,
         start_time: &std::time::Instant,
         modifiers: ModifiersState,
     ) -> EguiFrame {
-        let area = area.to_f64().to_physical(scale).to_i32_round::<i32>();
+        let previous = self.ctx.used_rect();
+
+        let screen_size = area.to_f64().to_physical(scale).to_i32_round::<i32>().size;
         let input = RawInput {
             screen_rect: Some(Rect {
                 min: Pos2 {
-                    x: area.loc.x as f32,
-                    y: area.loc.y as f32,
+                    x: 0.0,
+                    y: 0.0,
                 },
                 max: Pos2 {
-                    x: area.loc.x as f32 + area.size.w as f32,
-                    y: area.loc.y as f32 + area.size.h as f32,
+                    x: screen_size.w as f32,
+                    y: screen_size.h as f32,
                 },
             }),
-            pixels_per_point: Some(scale.ceil() as f32),
+            pixels_per_point: Some(scale as f32),
             time: Some(start_time.elapsed().as_secs_f64()),
             predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(modifiers),
@@ -283,10 +281,10 @@ impl EguiState {
             #[cfg(feature = "render_element")]
             area,
             alpha,
-            size,
             #[cfg(feature = "render_element")]
             z_index: self.z_index,
             mode: self.mode,
+            previous,
         }
     }
 
@@ -310,6 +308,7 @@ impl EguiFrame {
         r: &mut Gles2Renderer,
         frame: &Gles2Frame,
         location: Point<i32, Logical>,
+        render_scale: f64,
         damage: &[Rectangle<i32, Logical>],
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
@@ -322,40 +321,18 @@ impl EguiFrame {
 
         r.with_context(|r, gl| unsafe {
             let state = r.egl_context().user_data().get::<GlState>().unwrap();
-            let transform = frame.transformation();
-            let used_rect = self.ctx.used_rect();
 
             state.paint_meshes(
                 frame,
                 gl,
-                (location.to_f64().to_physical(self.scale) - Point::<f64, Physical>::from((used_rect.min.x as f64, used_rect.min.y as f64))).to_i32_round(),
-                self.scale,
+                location.to_f64().to_physical(self.scale).to_i32_round(),
+                self.area.size.to_f64().to_physical(render_scale).to_i32_round(),
+                1.0 / self.scale * render_scale,
                 &damage
-                    .iter()
-                    .map(|rect| Rectangle::from_loc_and_size(rect.loc + location, rect.size))
-                    .map(|rect| rect.to_buffer(self.scale.ceil() as i32, transform, &self.size.to_logical(self.scale.ceil() as i32)))
-                    .collect::<Vec<_>>(),
-                self.mesh
-                    .clone()
                     .into_iter()
-                    .map(|ClippedMesh(rect, mesh)| {
-                        let rect = Rectangle::<f64, Physical>::from_extemities(
-                            (rect.min.x as f64, rect.min.y as f64),
-                            (rect.max.x as f64, rect.max.y as f64),
-                        );
-                        let rect = transform.transform_rect_in(rect, &self.size.to_f64());
-                        ClippedMesh(
-                            Rect {
-                                min: (rect.loc.x as f32, rect.loc.y as f32).into(),
-                                max: (
-                                    (rect.loc.x + rect.size.w) as f32,
-                                    (rect.loc.y + rect.size.h) as f32,
-                                )
-                                    .into(),
-                            },
-                            mesh,
-                        )
-                    }),
+                    .map(|rect| rect.to_f64().to_physical(self.scale).to_i32_round())
+                    .collect::<Vec<_>>(),
+                self.mesh.iter().cloned(),
                 self.alpha,
             )
         })
@@ -363,15 +340,7 @@ impl EguiFrame {
     }
 
     pub fn geometry(&self) -> Rectangle<i32, Logical> {
-        let area = self.area.to_f64();
-
-        let used = self.ctx.used_rect();
-        Rectangle::<f64, Physical>::from_extemities(
-            Point::<f64, Physical>::from((used.min.x as f64, used.min.y as f64)) + area.loc,
-            Point::<f64, Physical>::from((used.max.x as f64, used.max.y as f64)) + area.loc,
-        )
-        .to_logical(self.scale)
-        .to_i32_round()
+        self.area
     }
 }
 
@@ -392,7 +361,18 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         if self.mode == EguiMode::Reactive && !self.output.needs_repaint {
             vec![]
         } else {
-            vec![Rectangle::from_loc_and_size((0, 0), self.geometry().size)]
+            let used = self.ctx.used_rect().union(self.previous);
+            let margin = self.ctx.style().visuals.clip_rect_margin as f64;
+            let window_shadow = self.ctx.style().visuals.window_shadow.extrusion as f64;
+            let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion as f64;
+            let offset = margin + window_shadow.max(popup_shadow);
+            vec![
+                Rectangle::<f64, Physical>::from_extemities(
+                    (used.min.x as f64 - offset, used.min.y as f64 - offset),
+                    (used.max.x as f64 + (offset * 2.0), used.max.y as f64 + (offset * 2.0))
+                ).to_logical(self.scale)
+                .to_i32_round()
+            ]
         }
     }
 
@@ -400,7 +380,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
         &self,
         renderer: &mut Gles2Renderer,
         frame: &mut Gles2Frame,
-        _scale: f64,
+        scale: f64,
         location: Point<i32, Logical>,
         damage: &[Rectangle<i32, Logical>],
         log: &slog::Logger,
@@ -411,6 +391,7 @@ impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for Egui
                 renderer,
                 frame,
                 location,
+                scale,
                 damage,
             )
         } {

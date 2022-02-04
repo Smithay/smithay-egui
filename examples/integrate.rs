@@ -126,7 +126,6 @@ fn main() -> Result<()> {
             |ctx| demo_ui.ui(ctx),
             // Just render it over the whole window, but you may limit the area
             Rectangle::from_loc_and_size((0, 0), size.to_logical(1)),
-            size,
             // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
             1.0,
             1.0,
@@ -148,6 +147,7 @@ fn main() -> Result<()> {
                         renderer,
                         frame,
                         (0, 0).into(),
+                        1.0,
                         &[Rectangle::from_loc_and_size((0, 0), size.to_logical(1))],
                     )
                 }
