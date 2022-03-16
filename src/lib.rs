@@ -11,10 +11,7 @@ use smithay::{
 };
 
 #[cfg(feature = "render_element")]
-use smithay::{
-    backend::renderer::gles2::Gles2Texture,
-    desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple},
-};
+use smithay::desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple};
 
 #[cfg(feature = "render_element")]
 use std::{
@@ -345,7 +342,7 @@ impl EguiFrame {
 }
 
 #[cfg(feature = "render_element")]
-impl RenderElement<Gles2Renderer, Gles2Frame, Gles2Error, Gles2Texture> for EguiFrame {
+impl RenderElement<Gles2Renderer> for EguiFrame {
     fn id(&self) -> usize {
         self.state_id
     }
