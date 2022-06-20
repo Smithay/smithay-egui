@@ -4,10 +4,11 @@ use smithay::{
         renderer::{Frame, Renderer},
         winit,
     },
+    delegate_seat,
     reexports::wayland_server::Display,
     utils::{Rectangle, Transform},
     wayland::{
-        seat::{FilterResult, ModifiersState, Seat, XkbConfig},
+        seat::{FilterResult, ModifiersState, Seat, SeatHandler, SeatState, XkbConfig},
         SERIAL_COUNTER,
     },
 };
@@ -25,11 +26,20 @@ use std::cell::RefCell;
 
 // This is only meant to provide a starting point to integrate egui into an already existing compositor
 
+struct FakeState;
+delegate_seat!(FakeState);
+impl SeatHandler for FakeState {
+    fn seat_state(&mut self) -> &mut SeatState<Self> {
+        unreachable!()
+    }
+}
+
 fn main() -> Result<()> {
     // setup logger
     let _guard = setup_logger();
     // create a winit-backend
-    let (mut backend, mut input) = winit::init(None)?;
+    let (mut backend, mut input) =
+        winit::init(None).map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
     // create an `EguiState`. Usually this would be part of your global smithay state
     let mut egui = EguiState::new(EguiMode::Reactive);
     // you might also need additional structs to store your ui-state, like the demo_lib does
@@ -40,8 +50,9 @@ fn main() -> Result<()> {
     let modifiers = RefCell::new(ModifiersState::default());
 
     // Usually you should already have a seat
-    let mut display = Display::new();
-    let (mut seat, _global) = Seat::new(&mut display, "seat-0".to_string(), None);
+    let display = Display::<FakeState>::new().unwrap();
+    let dh = display.handle();
+    let mut seat = Seat::<FakeState>::new(&dh, "seat-0".to_string(), None);
     // For a real compositor we would add a socket here and put the display inside an event loop,
     // but all we need for this example is the seat for it's input handling
     let keyboard = seat.add_keyboard(XkbConfig::default(), 200, 25, |_seat, _focus| {})?;
@@ -68,6 +79,7 @@ fn main() -> Result<()> {
                     //       if an event should be forwarded to egui or not.
                     InputEvent::Keyboard { event } => keyboard
                         .input(
+                            &dh,
                             event.key_code(),
                             event.state(),
                             SERIAL_COUNTER.next_serial(),
@@ -125,7 +137,7 @@ fn main() -> Result<()> {
         let egui_frame = egui.run(
             |ctx| demo_ui.ui(ctx),
             // Just render it over the whole window, but you may limit the area
-            Rectangle::from_loc_and_size((0, 0), size.to_logical(1)),
+            Rectangle::from_loc_and_size((0.0, 0.0), size.to_f64()),
             // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
             1.0,
             1.0,
@@ -146,14 +158,14 @@ fn main() -> Result<()> {
                     egui_frame.draw(
                         renderer,
                         frame,
-                        (0, 0).into(),
-                        1.0,
-                        &[Rectangle::from_loc_and_size((0, 0), size.to_logical(1))],
+                        (0.0, 0.0).into(),
+                        1.0.into(),
+                        &[Rectangle::from_loc_and_size((0, 0), size)],
                     )
                 }
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;
-        backend.submit(None, 1.0)?;
+        backend.submit(None)?;
     }
 }
 

@@ -1,17 +1,22 @@
 #[deny(missing_docs)]
-use egui::{epaint::ClippedMesh, Context, CtxRef, Event, Output, Pos2, RawInput, Rect, Vec2};
-
+use egui::{
+    epaint::ClippedPrimitive, Context, Event, FullOutput, Pos2, RawInput, Rect, TexturesDelta, Vec2,
+};
 use smithay::{
     backend::{
         input::{Device, DeviceCapability, MouseButton},
         renderer::gles2::{Gles2Error, Gles2Frame, Gles2Renderer},
     },
-    utils::{Logical, Physical, Point, Rectangle},
+    utils::{Logical, Physical, Point, Rectangle, Scale, Size},
     wayland::seat::{KeysymHandle, ModifiersState},
 };
+use std::cell::RefCell;
 
 #[cfg(feature = "render_element")]
-use smithay::desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple};
+use smithay::{
+    desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple},
+    reexports::wayland_server::DisplayHandle,
+};
 
 #[cfg(feature = "render_element")]
 use std::{
@@ -61,7 +66,7 @@ pub enum EguiMode {
 pub struct EguiState {
     #[cfg(feature = "render_element")]
     id: usize,
-    ctx: CtxRef,
+    ctx: Context,
     pointers: usize,
     last_pointer_position: Point<i32, Logical>,
     events: Vec<Event>,
@@ -75,12 +80,13 @@ pub struct EguiState {
 pub struct EguiFrame {
     #[cfg(feature = "render_element")]
     state_id: usize,
-    ctx: CtxRef,
-    output: Output,
-    mesh: Vec<ClippedMesh>,
+    ctx: Context,
+    needs_repaint: bool,
+    mesh: Vec<ClippedPrimitive>,
+    textures: TexturesDelta,
     scale: f64,
     #[cfg(feature = "render_element")]
-    area: Rectangle<i32, Logical>,
+    area: Rectangle<f64, Physical>,
     alpha: f32,
     #[cfg(feature = "render_element")]
     z_index: u8,
@@ -94,7 +100,7 @@ impl EguiState {
         EguiState {
             #[cfg(feature = "render_element")]
             id: next_id(),
-            ctx: CtxRef::default(),
+            ctx: Context::default(),
             pointers: 0,
             last_pointer_position: (0, 0).into(),
             events: Vec::new(),
@@ -113,7 +119,7 @@ impl EguiState {
 
     /// Retrieve the underlying [`egui::Context`]
     pub fn context(&self) -> &Context {
-        &*self.ctx
+        &self.ctx
     }
 
     /// If true, egui is currently listening on text input (e.g. typing text in a TextEdit).
@@ -237,8 +243,8 @@ impl EguiState {
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
     pub fn run(
         &mut self,
-        ui: impl FnOnce(&CtxRef),
-        area: Rectangle<i32, Logical>,
+        ui: impl FnOnce(&Context),
+        area: Rectangle<f64, Physical>,
         scale: f64,
         alpha: f32,
         start_time: &std::time::Instant,
@@ -246,13 +252,10 @@ impl EguiState {
     ) -> EguiFrame {
         let previous = self.ctx.used_rect();
 
-        let screen_size = area.to_f64().to_physical(scale).to_i32_round::<i32>().size;
+        let screen_size: Size<i32, Physical> = area.size.to_i32_round();
         let input = RawInput {
             screen_rect: Some(Rect {
-                min: Pos2 {
-                    x: 0.0,
-                    y: 0.0,
-                },
+                min: Pos2 { x: 0.0, y: 0.0 },
                 max: Pos2 {
                     x: screen_size.w as f32,
                     y: screen_size.h as f32,
@@ -265,15 +268,22 @@ impl EguiState {
             events: self.events.drain(..).collect(),
             hovered_files: Vec::with_capacity(0),
             dropped_files: Vec::with_capacity(0),
+            max_texture_side: None, // TODO query from GlState somehow
         };
 
-        let (output, shapes) = self.ctx.run(input, ui);
+        let FullOutput {
+            shapes,
+            textures_delta,
+            needs_repaint,
+            ..
+        } = self.ctx.run(input, ui);
         EguiFrame {
             #[cfg(feature = "render_element")]
             state_id: self.id,
             ctx: self.ctx.clone(),
-            output,
+            needs_repaint,
             mesh: self.ctx.tessellate(shapes),
+            textures: textures_delta,
             scale,
             #[cfg(feature = "render_element")]
             area,
@@ -304,39 +314,49 @@ impl EguiFrame {
         &self,
         r: &mut Gles2Renderer,
         frame: &Gles2Frame,
-        location: Point<i32, Logical>,
-        render_scale: f64,
-        damage: &[Rectangle<i32, Logical>],
+        location: Point<f64, Physical>,
+        render_scale: Scale<f64>,
+        damage: &[Rectangle<i32, Physical>],
     ) -> Result<(), Gles2Error> {
         use rendering::GlState;
 
         let user_data = r.egl_context().user_data();
-        if user_data.get::<GlState>().is_none() {
-            let state = GlState::new(r, self.ctx.font_image())?;
-            r.egl_context().user_data().insert_if_missing(|| state);
+        if user_data.get::<RefCell<GlState>>().is_none() {
+            let state = GlState::new(r, self.scale)?;
+            r.egl_context()
+                .user_data()
+                .insert_if_missing(|| RefCell::new(state));
         }
 
-        r.with_context(|r, gl| unsafe {
-            let state = r.egl_context().user_data().get::<GlState>().unwrap();
+        r.with_context(|r, gl| {
+            let state_guard = r
+                .egl_context()
+                .user_data()
+                .get::<RefCell<GlState>>()
+                .unwrap();
+            let mut state = state_guard.borrow_mut();
 
+            let scale = Scale {
+                x: 1.0 / self.scale * render_scale.x,
+                y: 1.0 / self.scale * render_scale.y,
+            };
+            state.upload_textures(gl, self.textures.set.iter())?;
             state.paint_meshes(
                 frame,
                 gl,
-                location.to_f64().to_physical(self.scale).to_i32_round(),
-                self.area.size.to_f64().to_physical(render_scale).to_i32_round(),
-                1.0 / self.scale * render_scale,
-                &damage
-                    .into_iter()
-                    .map(|rect| rect.to_f64().to_physical(self.scale).to_i32_round())
-                    .collect::<Vec<_>>(),
+                location.to_i32_round(),
+                self.area.size.to_i32_round(),
+                scale,
+                damage,
                 self.mesh.iter().cloned(),
                 self.alpha,
-            )
+            )?;
+            state.free_textures(gl, self.textures.free.iter().cloned())
         })
         .and_then(std::convert::identity)
     }
 
-    pub fn geometry(&self) -> Rectangle<i32, Logical> {
+    pub fn geometry(&self) -> Rectangle<f64, Physical> {
         self.area
     }
 }
@@ -347,15 +367,20 @@ impl RenderElement<Gles2Renderer> for EguiFrame {
         self.state_id
     }
 
-    fn geometry(&self) -> Rectangle<i32, Logical> {
-        EguiFrame::geometry(self)
+    fn location(&self, _scale: impl Into<Scale<f64>>) -> Point<f64, Physical> {
+        EguiFrame::geometry(self).loc
+    }
+
+    fn geometry(&self, _scale: impl Into<Scale<f64>>) -> Rectangle<i32, Physical> {
+        EguiFrame::geometry(self).to_i32_round()
     }
 
     fn accumulated_damage(
         &self,
+        _scale: impl Into<Scale<f64>>,
         _for_values: Option<SpaceOutputTuple<'_, '_>>,
-    ) -> Vec<Rectangle<i32, Logical>> {
-        if self.mode == EguiMode::Reactive && !self.output.needs_repaint {
+    ) -> Vec<Rectangle<i32, Physical>> {
+        if self.mode == EguiMode::Reactive && !self.needs_repaint {
             vec![]
         } else {
             let used = self.ctx.used_rect().union(self.previous);
@@ -363,35 +388,30 @@ impl RenderElement<Gles2Renderer> for EguiFrame {
             let window_shadow = self.ctx.style().visuals.window_shadow.extrusion as f64;
             let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion as f64;
             let offset = margin + window_shadow.max(popup_shadow);
-            vec![
-                Rectangle::<f64, Physical>::from_extemities(
-                    (used.min.x as f64 - offset, used.min.y as f64 - offset),
-                    (used.max.x as f64 + (offset * 2.0), used.max.y as f64 + (offset * 2.0))
-                ).to_logical(self.scale)
-                .to_i32_round()
-            ]
+            vec![Rectangle::<f64, Physical>::from_extemities(
+                (used.min.x as f64 - offset, used.min.y as f64 - offset),
+                (
+                    used.max.x as f64 + (offset * 2.0),
+                    used.max.y as f64 + (offset * 2.0),
+                ),
+            )
+            .to_i32_round()]
         }
     }
 
     fn draw(
         &self,
+        _dh: &DisplayHandle,
         renderer: &mut Gles2Renderer,
         frame: &mut Gles2Frame,
-        scale: f64,
-        location: Point<i32, Logical>,
-        damage: &[Rectangle<i32, Logical>],
+        scale: impl Into<Scale<f64>>,
+        location: Point<f64, Physical>,
+        damage: &[Rectangle<i32, Physical>],
         log: &slog::Logger,
     ) -> Result<(), Gles2Error> {
-        if let Err(err) = unsafe {
-            EguiFrame::draw(
-                self,
-                renderer,
-                frame,
-                location,
-                scale,
-                damage,
-            )
-        } {
+        if let Err(err) =
+            unsafe { EguiFrame::draw(self, renderer, frame, location, scale.into(), damage) }
+        {
             slog::error!(log, "egui rendering error: {}", err);
         }
         Ok(())

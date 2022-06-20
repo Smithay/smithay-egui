@@ -6,7 +6,7 @@ license = "MIT"
 
 [dependencies]
 cgmath = "0.18"
-egui = "0.16"
+egui = "0.18.1"
 memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
 slog = { version = "2.7.0", optional = true }
@@ -15,7 +15,7 @@ xkbcommon = "0.4"
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "bff3f51c"
+rev = "f9cd36f0"
 default-features = false
 features = ["renderer_gl", "wayland_frontend"]
 
@@ -27,15 +27,15 @@ render_element = ["smithay/desktop", "lazy_static", "slog"]
 
 [dev-dependencies]
 anyhow = "1.0"
-egui_demo_lib = "0.16"
+egui_demo_lib = "0.18"
 slog = "2.7"
-slog-term = "2.8"
+slog-term = "2.9"
 slog-scope = "4.4"
 slog-stdlog = "4.1"
 
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "bff3f51c"
+rev = "f9cd36f0"
 default-features = false
 features = ["renderer_gl", "backend_winit", "slog-stdlog"]
