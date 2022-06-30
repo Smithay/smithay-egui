@@ -152,7 +152,7 @@ fn main() -> Result<()> {
             .render(size, Transform::Flipped180, |renderer, frame| {
                 frame.clear(
                     [1.0, 1.0, 1.0, 1.0],
-                    &[Rectangle::from_loc_and_size((0.0, 0.0), size.to_f64())],
+                    &[Rectangle::from_loc_and_size((0, 0), size)],
                 )?;
                 unsafe {
                     egui_frame.draw(
