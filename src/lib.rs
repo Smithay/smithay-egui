@@ -15,7 +15,6 @@ use std::cell::RefCell;
 #[cfg(feature = "render_element")]
 use smithay::{
     desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple},
-    reexports::wayland_server::DisplayHandle,
 };
 
 #[cfg(feature = "render_element")]
@@ -401,7 +400,6 @@ impl RenderElement<Gles2Renderer> for EguiFrame {
 
     fn draw(
         &self,
-        _dh: &DisplayHandle,
         renderer: &mut Gles2Renderer,
         frame: &mut Gles2Frame,
         scale: impl Into<Scale<f64>>,
