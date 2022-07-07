@@ -398,6 +398,13 @@ impl RenderElement<Gles2Renderer> for EguiFrame {
         }
     }
 
+    fn opaque_regions(
+        &self,
+        _scale: impl Into<Scale<f64>>,
+    ) -> Option<Vec<Rectangle<i32, Physical>>> {
+        None
+    }
+
     fn draw(
         &self,
         renderer: &mut Gles2Renderer,
