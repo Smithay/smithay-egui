@@ -1,118 +1,91 @@
 #[deny(missing_docs)]
-use egui::{
-    epaint::ClippedPrimitive, Context, Event, FullOutput, Pos2, RawInput, Rect, TexturesDelta, Vec2,
-};
+use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect, Vec2};
+use egui_glow::Painter;
+#[cfg(feature = "desktop_integration")]
+use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::{
-        input::{Device, DeviceCapability, MouseButton},
-        renderer::gles2::{Gles2Error, Gles2Frame, Gles2Renderer},
+        input::{ButtonState, Device, DeviceCapability, KeyState, MouseButton},
+        renderer::{
+            element::texture::{TextureRenderBuffer, TextureRenderElement},
+            gles2::{Gles2Error, Gles2Texture},
+            glow::GlowRenderer,
+            Bind, Frame, Offscreen, Renderer, Unbind,
+        },
     },
-    utils::{Logical, Physical, Point, Rectangle, Scale, Size},
-    wayland::seat::{KeysymHandle, ModifiersState},
+    desktop::space::RenderZindex,
+    input::{
+        keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
+        pointer::PointerTarget,
+        SeatHandler,
+    },
+    utils::{IsAlive, Logical, Physical, Point, Rectangle, Size, Transform},
 };
-use std::cell::RefCell;
 
-#[cfg(feature = "render_element")]
-use smithay::{
-    desktop::space::{RenderElement, RenderZindex, SpaceOutputTuple},
-};
-
-#[cfg(feature = "render_element")]
 use std::{
-    collections::HashSet,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Mutex,
-    },
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 
-mod rendering;
-mod text;
-mod types;
-pub use self::types::{convert_button, convert_key, convert_modifiers};
+mod input;
+pub use self::input::{convert_button, convert_key, convert_modifiers};
 
-#[cfg(feature = "render_element")]
-static EGUI_ID: AtomicUsize = AtomicUsize::new(0);
-#[cfg(feature = "render_element")]
-lazy_static::lazy_static! {
-    static ref EGUI_IDS: Mutex<HashSet<usize>> = Mutex::new(HashSet::new());
-}
-#[cfg(feature = "render_element")]
-fn next_id() -> usize {
-    let mut ids = EGUI_IDS.lock().unwrap();
-    debug_assert!(ids.len() != usize::MAX);
-    let mut id = EGUI_ID.fetch_add(1, Ordering::SeqCst);
-    while ids.iter().any(|k| *k == id) {
-        id = EGUI_ID.fetch_add(1, Ordering::SeqCst);
-    }
-
-    ids.insert(id);
-    id
-}
-
-/// Enum representing egui render mode
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum EguiMode {
-    /// In this mode `EguiFrame` reports damage only when a input is passed to `EguiState`
-    /// or a widget uses `[CtxRef::request_repaint]`
-    Reactive,
-    /// In this mode `EguiFrame` reports full damage on every draw
-    /// The full EguiState is redraw on every draw
-    Continuous,
-}
-
-/// Global smithay-egui state
+/// smithay-egui state object
+#[derive(Clone)]
 pub struct EguiState {
-    #[cfg(feature = "render_element")]
-    id: usize,
+    inner: Arc<Mutex<EguiInner>>,
     ctx: Context,
+}
+
+impl PartialEq for EguiState {
+    fn eq(&self, other: &Self) -> bool {
+        self.ctx == other.ctx
+    }
+}
+
+#[derive(Debug)]
+struct EguiInner {
     pointers: usize,
     last_pointer_position: Point<i32, Logical>,
+    area: Rectangle<i32, Logical>,
+    last_modifiers: ModifiersState,
+    pressed: Vec<(Option<egui::Key>, u32)>,
+    focused: bool,
     events: Vec<Event>,
-    kbd: Option<text::KbdInternal>,
-    #[cfg(feature = "render_element")]
+    kbd: Option<input::KbdInternal>,
+    #[cfg(feature = "desktop_integration")]
     z_index: u8,
-    mode: EguiMode,
 }
 
-/// A single rendered egui interface frame
-pub struct EguiFrame {
-    #[cfg(feature = "render_element")]
-    state_id: usize,
-    ctx: Context,
-    needs_repaint: bool,
-    mesh: Vec<ClippedPrimitive>,
-    textures: TexturesDelta,
-    scale: f64,
-    #[cfg(feature = "render_element")]
-    area: Rectangle<f64, Physical>,
-    alpha: f32,
-    #[cfg(feature = "render_element")]
-    z_index: u8,
-    mode: EguiMode,
-    previous: Rect,
+struct GlState {
+    painter: Painter,
+    render_buffer: TextureRenderBuffer<Gles2Texture>,
 }
 
 impl EguiState {
     /// Creates a new `EguiState`
-    pub fn new(mode: EguiMode) -> EguiState {
+    pub fn new(area: Rectangle<i32, Logical>) -> EguiState {
         EguiState {
-            #[cfg(feature = "render_element")]
-            id: next_id(),
             ctx: Context::default(),
-            pointers: 0,
-            last_pointer_position: (0, 0).into(),
-            events: Vec::new(),
-            kbd: match text::KbdInternal::new() {
-                Some(kbd) => Some(kbd),
-                None => {
-                    eprintln!("Failed to initialize keymap for text input in egui.");
-                    None
-                }
-            },
-            #[cfg(feature = "render_element")]
-            z_index: RenderZindex::Overlay as u8,
-            mode,
+            inner: Arc::new(Mutex::new(EguiInner {
+                pointers: 0,
+                last_pointer_position: (0, 0).into(),
+                area,
+                last_modifiers: ModifiersState::default(),
+                events: Vec::new(),
+                focused: false,
+                pressed: Vec::new(),
+                kbd: match input::KbdInternal::new() {
+                    Some(kbd) => Some(kbd),
+                    None => {
+                        eprintln!("Failed to initialize keymap for text input in egui.");
+                        None
+                    }
+                },
+                #[cfg(feature = "desktop_integration")]
+                z_index: RenderZindex::Overlay as u8,
+            })),
         }
     }
 
@@ -135,19 +108,20 @@ impl EguiState {
     }
 
     /// Pass new input devices to `EguiState` for internal tracking
-    pub fn handle_device_added(&mut self, device: &impl Device) {
+    pub fn handle_device_added(&self, device: &impl Device) {
         if device.has_capability(DeviceCapability::Pointer) {
-            self.pointers += 1;
+            self.inner.lock().unwrap().pointers += 1;
         }
     }
 
     /// Remove input devices to `EguiState` for internal tracking
-    pub fn handle_device_removed(&mut self, device: &impl Device) {
+    pub fn handle_device_removed(&self, device: &impl Device) {
+        let mut inner = self.inner.lock().unwrap();
         if device.has_capability(DeviceCapability::Pointer) {
-            self.pointers -= 1;
+            inner.pointers -= 1;
         }
-        if self.pointers == 0 {
-            self.events.push(Event::PointerGone);
+        if inner.pointers == 0 {
+            inner.events.push(Event::PointerGone);
         }
     }
 
@@ -157,22 +131,28 @@ impl EguiState {
     /// So for every pressed event, you want to send a released one.
     ///
     /// You likely want to use the filter-closure of [`smithay::wayland::seat::KeyboardHandle::input`] to optain these values.
-    /// Use [`smithay::wayland::seat::KeysymHandle::raw_syms`] and the provided [`smithay::wayland::seat::ModifiersState`].
-    pub fn handle_keyboard(
-        &mut self,
-        handle: &KeysymHandle,
-        pressed: bool,
-        modifiers: ModifiersState,
-    ) {
-        if let Some(key) = convert_key(handle.raw_syms().iter().copied()) {
-            self.events.push(Event::Key {
+    /// Use [`smithay::wayland::seat::KeysymHandle`] and the provided [`smithay::wayland::seat::ModifiersState`].
+    pub fn handle_keyboard(&self, handle: &KeysymHandle, pressed: bool, modifiers: ModifiersState) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.last_modifiers = modifiers;
+        let key = if let Some(key) = convert_key(handle.raw_syms().iter().copied()) {
+            inner.events.push(Event::Key {
                 key,
                 pressed,
                 modifiers: convert_modifiers(modifiers),
             });
+            Some(key)
+        } else {
+            None
+        };
+
+        if pressed {
+            inner.pressed.push((key, handle.raw_code()));
+        } else {
+            inner.pressed.retain(|(_, code)| code != &handle.raw_code());
         }
 
-        if let Some(kbd) = self.kbd.as_mut() {
+        if let Some(kbd) = inner.kbd.as_mut() {
             kbd.key_input(handle.raw_code(), pressed);
 
             if pressed {
@@ -180,15 +160,16 @@ impl EguiState {
                 /* utf8 contains the utf8 string generated by that keystroke
                  * it can contain 1, multiple characters, or even be empty
                  */
-                self.events.push(Event::Text(utf8));
+                inner.events.push(Event::Text(utf8));
             }
         }
     }
 
     /// Pass new pointer coordinates to `EguiState`
-    pub fn handle_pointer_motion(&mut self, position: Point<i32, Logical>) {
-        self.last_pointer_position = position;
-        self.events.push(Event::PointerMoved(Pos2::new(
+    pub fn handle_pointer_motion(&self, position: Point<i32, Logical>) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.last_pointer_position = position;
+        inner.events.push(Event::PointerMoved(Pos2::new(
             position.x as f32,
             position.y as f32,
         )))
@@ -199,21 +180,16 @@ impl EguiState {
     /// Note: If you are unsure about *which* PointerButtonEvents to send to smithay-egui
     ///       instead of normal clients, check [`EguiState::wants_pointer`] to figure out,
     ///       if there is an egui-element below your pointer.
-    pub fn handle_pointer_button(
-        &mut self,
-        button: MouseButton,
-        pressed: bool,
-        modifiers: ModifiersState,
-    ) {
+    pub fn handle_pointer_button(&self, button: MouseButton, pressed: bool) {
         if let Some(button) = convert_button(button) {
-            self.events.push(Event::PointerButton {
-                pos: Pos2::new(
-                    self.last_pointer_position.x as f32,
-                    self.last_pointer_position.y as f32,
-                ),
+            let mut inner = self.inner.lock().unwrap();
+            let last_pos = inner.last_pointer_position;
+            let modifiers = convert_modifiers(inner.last_modifiers);
+            inner.events.push(Event::PointerButton {
+                pos: Pos2::new(last_pos.x as f32, last_pos.y as f32),
                 button,
                 pressed,
-                modifiers: convert_modifiers(modifiers),
+                modifiers,
             })
         }
     }
@@ -223,35 +199,76 @@ impl EguiState {
     /// Note: If you are unsure about *which* PointerAxisEvents to send to smithay-egui
     ///       instead of normal clients, check [`EguiState::wants_pointer`] to figure out,
     ///       if there is an egui-element below your pointer.
-    pub fn handle_pointer_axis(&mut self, x_amount: f64, y_amount: f64) {
-        self.events.push(Event::Scroll(Vec2 {
+    pub fn handle_pointer_axis(&self, x_amount: f64, y_amount: f64) {
+        self.inner.lock().unwrap().events.push(Event::Scroll(Vec2 {
             x: x_amount as f32,
             y: y_amount as f32,
         }))
     }
 
+    /// Set if this [`EguiState`] should consider itself focused
+    pub fn set_focused(&self, focused: bool) {
+        self.inner.lock().unwrap().focused = focused;
+    }
+
     // TODO: touch inputs
 
-    /// Produce a new frame of egui to draw onto your output buffer.
+    /// Produce a new frame of egui. Returns a [`RenderElement`]
     ///
     /// - `ui` is your drawing function
-    /// - `area` limits the space egui will be using.
-    /// - `size` has to be the total size of the buffer the ui will be displayed in
+    /// - `renderer` is a [`GlowRenderer`]
+    /// - `area` limits the space egui will be using and offsets the result
     /// - `scale` is the scale egui should render in
+    /// - `alpha` applies (additional) transparency to the whole ui
     /// - `start_time` need to be a fixed point in time before the first `run` call to measure animation-times and the like.
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
-    pub fn run(
-        &mut self,
+    pub fn render(
+        &self,
         ui: impl FnOnce(&Context),
-        area: Rectangle<f64, Physical>,
+        renderer: &mut GlowRenderer,
+        area: Rectangle<i32, Logical>,
         scale: f64,
-        alpha: f32,
         start_time: &std::time::Instant,
-        modifiers: ModifiersState,
-    ) -> EguiFrame {
-        let previous = self.ctx.used_rect();
+    ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
+        let int_scale = scale.ceil() as i32;
+        let user_data = renderer.egl_context().user_data();
+        if user_data.get::<RefCell<GlState>>().is_none() {
+            let painter = renderer
+                .with_context(|_, context| Painter::new(context.clone(), None, ""))?
+                .map_err(|_| Gles2Error::ShaderCompileError(""))?;
+            let render_texture = renderer.create_buffer(
+                area.size
+                    .to_buffer(int_scale, smithay::utils::Transform::Normal),
+            )?;
+            let render_buffer = TextureRenderBuffer::from_texture(
+                renderer,
+                render_texture,
+                int_scale,
+                Transform::Flipped180,
+                None,
+            );
+            renderer.egl_context().user_data().insert_if_missing(|| {
+                Rc::new(RefCell::new(GlState {
+                    painter,
+                    render_buffer,
+                }))
+            });
+        }
 
-        let screen_size: Size<i32, Physical> = area.size.to_i32_round();
+        let mut inner = self.inner.lock().unwrap();
+        let gl_state = renderer
+            .egl_context()
+            .user_data()
+            .get::<Rc<RefCell<GlState>>>()
+            .unwrap()
+            .clone();
+        let mut borrow = gl_state.borrow_mut();
+        let &mut GlState {
+            ref mut painter,
+            ref mut render_buffer,
+        } = &mut *borrow;
+
+        let screen_size: Size<i32, Physical> = area.size.to_physical(int_scale);
         let input = RawInput {
             screen_rect: Some(Rect {
                 min: Pos2 { x: 0.0, y: 0.0 },
@@ -260,169 +277,269 @@ impl EguiState {
                     y: screen_size.h as f32,
                 },
             }),
-            pixels_per_point: Some(scale as f32),
+            pixels_per_point: Some(int_scale as f32),
             time: Some(start_time.elapsed().as_secs_f64()),
             predicted_dt: 1.0 / 60.0,
-            modifiers: convert_modifiers(modifiers),
-            events: self.events.drain(..).collect(),
+            modifiers: convert_modifiers(inner.last_modifiers),
+            events: inner.events.drain(..).collect(),
             hovered_files: Vec::with_capacity(0),
             dropped_files: Vec::with_capacity(0),
-            max_texture_side: None, // TODO query from GlState somehow
+            has_focus: inner.focused,
+            max_texture_side: Some(painter.max_texture_side()), // TODO query from GlState somehow
         };
 
         let FullOutput {
             shapes,
             textures_delta,
-            needs_repaint,
+            repaint_after,
             ..
         } = self.ctx.run(input, ui);
-        EguiFrame {
-            #[cfg(feature = "render_element")]
-            state_id: self.id,
-            ctx: self.ctx.clone(),
-            needs_repaint,
-            mesh: self.ctx.tessellate(shapes),
-            textures: textures_delta,
-            scale,
-            #[cfg(feature = "render_element")]
-            area,
-            alpha,
-            #[cfg(feature = "render_element")]
-            z_index: self.z_index,
-            mode: self.mode,
-            previous,
+        let needs_recreate = inner.area != area;
+        let needs_repaint = repaint_after.is_zero() || needs_recreate;
+        inner.area = area;
+
+        if needs_repaint {
+            if needs_recreate {
+                *render_buffer = {
+                    let render_texture = renderer.create_buffer(
+                        area.size
+                            .to_buffer(int_scale, smithay::utils::Transform::Normal),
+                    )?;
+                    TextureRenderBuffer::from_texture(
+                        renderer,
+                        render_texture,
+                        int_scale,
+                        Transform::Flipped180,
+                        None,
+                    )
+                };
+            }
+
+            render_buffer.render().draw(|tex| {
+                if renderer.bind(tex.clone()).is_err() {
+                    return Vec::new();
+                }
+
+                if renderer
+                    .render(
+                        area.size.to_physical(int_scale),
+                        Transform::Normal,
+                        |_renderer, frame| {
+                            frame.clear([0.1, 0.1, 0.1, 1.0], &[area.to_physical(int_scale)])?;
+                            painter.paint_and_update_textures(
+                                [area.size.w as u32, area.size.h as u32],
+                                scale as f32,
+                                &self.ctx.tessellate(shapes),
+                                &textures_delta,
+                            );
+                            Ok(())
+                        },
+                    )
+                    .and_then(|e| e)
+                    .is_err()
+                {
+                    return Vec::new();
+                }
+                let _ = renderer.unbind();
+
+                let used = self.ctx.used_rect();
+                let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
+                let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
+                let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
+                let offset = margin + Ord::max(window_shadow, popup_shadow);
+                vec![Rectangle::from_extemities(
+                    (
+                        (used.min.x.floor() as i32).saturating_sub(offset),
+                        (used.min.y.floor() as i32).saturating_sub(offset),
+                    ),
+                    (
+                        (used.max.x.ceil() as i32) + (offset * 2),
+                        (used.max.y.ceil() as i32) + (offset * 2),
+                    ),
+                )]
+            });
         }
+
+        Ok(TextureRenderElement::from_texture_render_buffer(
+            area.loc.to_f64().to_physical(scale),
+            &render_buffer,
+            None,
+            None,
+        ))
     }
 
-    /// Sets the z_index that is used by future `EguiFrame`s produced by this states
-    /// [`EguiState::run`], when used as a `RenderElement`.
-    #[cfg(feature = "render_element")]
-    pub fn set_zindex(&mut self, index: u8) {
-        self.z_index = index;
-    }
-
-    /// Sets the drawing mode of EguiState, refer to `EguiMode`
-    pub fn set_mode(&mut self, mode: EguiMode) {
-        self.mode = mode;
+    /// Sets the z_index as reported by [`SpaceElement::z_index`].
+    ///
+    /// The default is [`RenderZindex::Overlay`].
+    #[cfg(feature = "desktop_integration")]
+    pub fn set_zindex(&self, idx: u8) {
+        self.inner.lock().unwrap().z_index = idx;
     }
 }
 
-impl EguiFrame {
-    /// Draw this frame in the currently active GL-context
-    pub unsafe fn draw(
+impl IsAlive for EguiState {
+    fn alive(&self) -> bool {
+        true
+    }
+}
+
+impl<D: SeatHandler> PointerTarget<D> for EguiState {
+    fn enter(
         &self,
-        r: &mut Gles2Renderer,
-        frame: &Gles2Frame,
-        location: Point<f64, Physical>,
-        render_scale: Scale<f64>,
-        damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), Gles2Error> {
-        use rendering::GlState;
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        event: &smithay::input::pointer::MotionEvent,
+    ) {
+        self.handle_pointer_motion(event.location.to_i32_floor())
+    }
 
-        let user_data = r.egl_context().user_data();
-        if user_data.get::<RefCell<GlState>>().is_none() {
-            let state = GlState::new(r, self.scale)?;
-            r.egl_context()
-                .user_data()
-                .insert_if_missing(|| RefCell::new(state));
+    fn motion(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        event: &smithay::input::pointer::MotionEvent,
+    ) {
+        self.handle_pointer_motion(event.location.to_i32_round())
+    }
+
+    fn button(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        event: &smithay::input::pointer::ButtonEvent,
+    ) {
+        if let Some(button) = match event.button {
+            0x110 => Some(MouseButton::Left),
+            0x111 => Some(MouseButton::Right),
+            0x112 => Some(MouseButton::Middle),
+            0x115 => Some(MouseButton::Forward),
+            0x116 => Some(MouseButton::Back),
+            _ => None,
+        } {
+            self.handle_pointer_button(button, event.state == ButtonState::Pressed)
         }
+    }
 
-        r.with_context(|r, gl| {
-            let state_guard = r
-                .egl_context()
-                .user_data()
-                .get::<RefCell<GlState>>()
-                .unwrap();
-            let mut state = state_guard.borrow_mut();
+    fn axis(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        _frame: smithay::input::pointer::AxisFrame,
+    ) {
+        // TODO
+        //self.handle_pointer_axis(frame., y_amount)
+    }
 
-            let scale = Scale {
-                x: 1.0 / self.scale * render_scale.x,
-                y: 1.0 / self.scale * render_scale.y,
+    fn leave(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        _serial: smithay::utils::Serial,
+        _time: u32,
+    ) {
+    }
+}
+
+impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
+    fn enter(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        keys: Vec<KeysymHandle<'_>>,
+        _serial: smithay::utils::Serial,
+    ) {
+        self.set_focused(true);
+
+        let mut inner = self.inner.lock().unwrap();
+        for handle in &keys {
+            let key = if let Some(key) = convert_key(handle.raw_syms().iter().copied()) {
+                let modifiers = convert_modifiers(inner.last_modifiers);
+                inner.events.push(Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                });
+                Some(key)
+            } else {
+                None
             };
-            state.upload_textures(gl, self.textures.set.iter())?;
-            state.paint_meshes(
-                frame,
-                gl,
-                location.to_i32_round(),
-                self.area.size.to_i32_round(),
-                scale,
-                damage,
-                self.mesh.iter().cloned(),
-                self.alpha,
-            )?;
-            state.free_textures(gl, self.textures.free.iter().cloned())
-        })
-        .and_then(std::convert::identity)
+            inner.pressed.push((key, handle.raw_code()));
+            if let Some(kbd) = inner.kbd.as_mut() {
+                kbd.key_input(handle.raw_code(), true);
+            }
+        }
     }
 
-    pub fn geometry(&self) -> Rectangle<f64, Physical> {
-        self.area
+    fn leave(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        _serial: smithay::utils::Serial,
+    ) {
+        self.set_focused(false);
+
+        let keys = std::mem::take(&mut self.inner.lock().unwrap().pressed);
+        let mut inner = self.inner.lock().unwrap();
+        for (key, code) in keys {
+            if let Some(key) = key {
+                let modifiers = convert_modifiers(inner.last_modifiers);
+                inner.events.push(Event::Key {
+                    key,
+                    pressed: false,
+                    modifiers,
+                });
+            }
+            if let Some(kbd) = inner.kbd.as_mut() {
+                kbd.key_input(code, false);
+            }
+        }
+    }
+
+    fn key(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        key: KeysymHandle<'_>,
+        state: smithay::backend::input::KeyState,
+        _serial: smithay::utils::Serial,
+        _time: u32,
+    ) {
+        let modifiers = self.inner.lock().unwrap().last_modifiers;
+        self.handle_keyboard(&key, state == KeyState::Pressed, modifiers)
+    }
+
+    fn modifiers(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        modifiers: ModifiersState,
+        _serial: smithay::utils::Serial,
+    ) {
+        self.inner.lock().unwrap().last_modifiers = modifiers;
     }
 }
 
-#[cfg(feature = "render_element")]
-impl RenderElement<Gles2Renderer> for EguiFrame {
-    fn id(&self) -> usize {
-        self.state_id
+#[cfg(feature = "desktop_integration")]
+impl SpaceElement for EguiState {
+    fn bbox(&self) -> Rectangle<i32, Logical> {
+        self.inner.lock().unwrap().area
     }
 
-    fn location(&self, _scale: impl Into<Scale<f64>>) -> Point<f64, Physical> {
-        EguiFrame::geometry(self).loc
-    }
-
-    fn geometry(&self, _scale: impl Into<Scale<f64>>) -> Rectangle<i32, Physical> {
-        EguiFrame::geometry(self).to_i32_round()
-    }
-
-    fn accumulated_damage(
-        &self,
-        _scale: impl Into<Scale<f64>>,
-        _for_values: Option<SpaceOutputTuple<'_, '_>>,
-    ) -> Vec<Rectangle<i32, Physical>> {
-        if self.mode == EguiMode::Reactive && !self.needs_repaint {
-            vec![]
+    fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
+        let pos: Point<i32, _> = point.to_i32_round();
+        let last_pos = self.inner.lock().unwrap().last_pointer_position;
+        if (pos.x - last_pos.x) + (pos.y - last_pos.y) < 10 {
+            self.wants_pointer()
         } else {
-            let used = self.ctx.used_rect().union(self.previous);
-            let margin = self.ctx.style().visuals.clip_rect_margin as f64;
-            let window_shadow = self.ctx.style().visuals.window_shadow.extrusion as f64;
-            let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion as f64;
-            let offset = margin + window_shadow.max(popup_shadow);
-            vec![Rectangle::<f64, Physical>::from_extemities(
-                (used.min.x as f64 - offset, used.min.y as f64 - offset),
-                (
-                    used.max.x as f64 + (offset * 2.0),
-                    used.max.y as f64 + (offset * 2.0),
-                ),
-            )
-            .to_i32_round()]
+            false
         }
     }
 
-    fn opaque_regions(
-        &self,
-        _scale: impl Into<Scale<f64>>,
-    ) -> Option<Vec<Rectangle<i32, Physical>>> {
-        None
-    }
-
-    fn draw(
-        &self,
-        renderer: &mut Gles2Renderer,
-        frame: &mut Gles2Frame,
-        scale: impl Into<Scale<f64>>,
-        location: Point<f64, Physical>,
-        damage: &[Rectangle<i32, Physical>],
-        log: &slog::Logger,
-    ) -> Result<(), Gles2Error> {
-        if let Err(err) =
-            unsafe { EguiFrame::draw(self, renderer, frame, location, scale.into(), damage) }
-        {
-            slog::error!(log, "egui rendering error: {}", err);
-        }
-        Ok(())
-    }
+    fn set_activate(&self, _activated: bool) {}
+    fn output_enter(&self, _output: &smithay::output::Output, _overlap: Rectangle<i32, Logical>) {}
+    fn output_leave(&self, _output: &smithay::output::Output) {}
 
     fn z_index(&self) -> u8 {
-        self.z_index
+        self.inner.lock().unwrap().z_index as u8
     }
 }

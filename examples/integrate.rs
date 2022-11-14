@@ -1,19 +1,17 @@
 use anyhow::Result;
 use smithay::{
     backend::{
-        renderer::{Frame, Renderer},
+        renderer::{element::RenderElement, glow::GlowRenderer, Frame, Renderer},
         winit,
     },
-    delegate_seat,
-    reexports::wayland_server::Display,
-    utils::{Rectangle, Transform},
-    wayland::{
-        seat::{FilterResult, ModifiersState, Seat, SeatHandler, SeatState, XkbConfig},
-        SERIAL_COUNTER,
+    input::{
+        keyboard::{FilterResult, XkbConfig},
+        pointer::{AxisFrame, ButtonEvent, MotionEvent},
+        SeatHandler, SeatState,
     },
+    utils::{Rectangle, Transform, SERIAL_COUNTER},
 };
-use smithay_egui::{EguiMode, EguiState};
-use std::cell::RefCell;
+use smithay_egui::EguiState;
 
 // This example provides a minimal example to:
 // - Setup and `Renderer` and get `InputEvents` via winit.
@@ -26,11 +24,12 @@ use std::cell::RefCell;
 
 // This is only meant to provide a starting point to integrate egui into an already existing compositor
 
-struct FakeState;
-delegate_seat!(FakeState);
-impl SeatHandler for FakeState {
+struct State(SeatState<State>);
+impl SeatHandler for State {
+    type KeyboardFocus = EguiState;
+    type PointerFocus = EguiState;
     fn seat_state(&mut self) -> &mut SeatState<Self> {
-        unreachable!()
+        &mut self.0
     }
 }
 
@@ -38,31 +37,31 @@ fn main() -> Result<()> {
     // setup logger
     let _guard = setup_logger();
     // create a winit-backend
-    let (mut backend, mut input) =
-        winit::init(None).map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
+    let (mut backend, mut input) = winit::init::<GlowRenderer, _>(None)
+        .map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
     // create an `EguiState`. Usually this would be part of your global smithay state
-    let mut egui = EguiState::new(EguiMode::Reactive);
+    let egui = EguiState::new(Rectangle::from_loc_and_size(
+        (0, 0),
+        backend.window_size().physical_size.to_logical(1),
+    ));
     // you might also need additional structs to store your ui-state, like the demo_lib does
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
     // this is likely already part of your ui-state for `send_frames` and similar
     let start_time = std::time::Instant::now();
-    // We need to track the current set of modifiers, because egui expects them to be passed for many events
-    let modifiers = RefCell::new(ModifiersState::default());
 
-    // Usually you should already have a seat
-    let display = Display::<FakeState>::new().unwrap();
-    let dh = display.handle();
-    let mut seat = Seat::<FakeState>::new(&dh, "seat-0".to_string(), None);
-    // For a real compositor we would add a socket here and put the display inside an event loop,
-    // but all we need for this example is the seat for it's input handling
-    let keyboard = seat.add_keyboard(XkbConfig::default(), 200, 25, |_seat, _focus| {})?;
+    let mut seat_state = SeatState::new();
+    let mut seat = seat_state.new_seat("seat-0", None);
+    let mut state = State(seat_state);
+    let keyboard = seat.add_keyboard(XkbConfig::default(), 200, 25)?;
+    keyboard.set_focus(&mut state, Some(egui.clone()), SERIAL_COUNTER.next_serial());
+    let pointer = seat.add_pointer();
 
     loop {
         input.dispatch_new_events(|event| {
             use smithay::backend::{
                 input::{
-                    Axis, ButtonState, Event, InputEvent, KeyState, KeyboardKeyEvent,
-                    PointerAxisEvent, PointerButtonEvent, PointerMotionAbsoluteEvent,
+                    AbsolutePositionEvent, Axis, AxisSource, Event, InputEvent, KeyboardKeyEvent,
+                    PointerAxisEvent, PointerButtonEvent,
                 },
                 winit::WinitEvent::*,
             };
@@ -79,52 +78,73 @@ fn main() -> Result<()> {
                     //       if an event should be forwarded to egui or not.
                     InputEvent::Keyboard { event } => keyboard
                         .input(
-                            &dh,
+                            &mut state,
                             event.key_code(),
                             event.state(),
                             SERIAL_COUNTER.next_serial(),
                             event.time(),
-                            |new_modifiers, handle| {
-                                egui.handle_keyboard(
-                                    &handle,
-                                    event.state() == KeyState::Pressed,
-                                    new_modifiers.clone(),
-                                );
-                                *modifiers.borrow_mut() = new_modifiers.clone();
-                                FilterResult::Intercept(())
-                            },
+                            |_data, _modifiers, _handle| FilterResult::Forward,
                         )
                         .unwrap_or(()),
                     // Winit only produces `PointerMotionAbsolute` events, but a real compositor needs to handle this for `PointerMotion` events as well.
                     // Meaning: you need to compute the absolute position and pass that to egui.
-                    InputEvent::PointerMotionAbsolute { event } => egui.handle_pointer_motion(
-                        event
-                            .position_transformed(backend.window_size().physical_size.to_logical(1))
-                            .to_i32_round(),
-                    ),
-                    // NOTE: you should check with `EguiState::wwants_pointer`, if the pointer is above any egui element before forwarding it.
-                    // Otherwise forward it to clients as usual.
-                    InputEvent::PointerButton { event } => {
-                        if let Some(button) = event.button() {
-                            egui.handle_pointer_button(
-                                button,
-                                event.state() == ButtonState::Pressed,
-                                modifiers.borrow().clone(),
-                            );
-                        }
+                    InputEvent::PointerMotionAbsolute { event } => {
+                        let pos = dbg!(event.position());
+                        pointer.motion(
+                            &mut state,
+                            Some((egui.clone(), (0, 0).into())),
+                            &MotionEvent {
+                                location: (pos.x, pos.y).into(),
+                                serial: SERIAL_COUNTER.next_serial(),
+                                time: event.time(),
+                            },
+                        );
                     }
                     // NOTE: you should check with `EguiState::wwants_pointer`, if the pointer is above any egui element before forwarding it.
                     // Otherwise forward it to clients as usual.
-                    InputEvent::PointerAxis { event } => egui.handle_pointer_axis(
-                        event
-                            .amount_discrete(Axis::Horizontal)
-                            .or_else(|| event.amount(Axis::Horizontal).map(|x| x * 3.0))
-                            .unwrap_or(0.0),
-                        event
-                            .amount_discrete(Axis::Vertical)
-                            .or_else(|| event.amount(Axis::Vertical).map(|x| x * 3.0))
-                            .unwrap_or(0.0),
+                    InputEvent::PointerButton { event } => pointer.button(
+                        &mut state,
+                        &ButtonEvent {
+                            button: event.button_code(),
+                            state: event.state().into(),
+                            serial: SERIAL_COUNTER.next_serial(),
+                            time: event.time(),
+                        },
                     ),
+                    // NOTE: you should check with `EguiState::wwants_pointer`, if the pointer is above any egui element before forwarding it.
+                    // Otherwise forward it to clients as usual.
+                    InputEvent::PointerAxis { event } => {
+                        let horizontal_amount =
+                            event.amount(Axis::Horizontal).unwrap_or_else(|| {
+                                event.amount_discrete(Axis::Horizontal).unwrap_or(0.0) * 3.0
+                            });
+                        let vertical_amount = event.amount(Axis::Vertical).unwrap_or_else(|| {
+                            event.amount_discrete(Axis::Vertical).unwrap_or(0.0) * 3.0
+                        });
+                        let horizontal_amount_discrete = event.amount_discrete(Axis::Horizontal);
+                        let vertical_amount_discrete = event.amount_discrete(Axis::Vertical);
+
+                        {
+                            let mut frame = AxisFrame::new(event.time()).source(event.source());
+                            if horizontal_amount != 0.0 {
+                                frame = frame.value(Axis::Horizontal, horizontal_amount);
+                                if let Some(discrete) = horizontal_amount_discrete {
+                                    frame = frame.discrete(Axis::Horizontal, discrete as i32);
+                                }
+                            } else if event.source() == AxisSource::Finger {
+                                frame = frame.stop(Axis::Horizontal);
+                            }
+                            if vertical_amount != 0.0 {
+                                frame = frame.value(Axis::Vertical, vertical_amount);
+                                if let Some(discrete) = vertical_amount_discrete {
+                                    frame = frame.discrete(Axis::Vertical, discrete as i32);
+                                }
+                            } else if event.source() == AxisSource::Finger {
+                                frame = frame.stop(Axis::Vertical);
+                            }
+                            pointer.axis(&mut state, frame);
+                        }
+                    }
                     _ => {}
                 },
                 _ => {}
@@ -132,18 +152,18 @@ fn main() -> Result<()> {
         })?;
 
         let size = backend.window_size().physical_size;
-
         // Here we compute the rendered egui frame
-        let egui_frame = egui.run(
-            |ctx| demo_ui.ui(ctx),
-            // Just render it over the whole window, but you may limit the area
-            Rectangle::from_loc_and_size((0.0, 0.0), size.to_f64()),
-            // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
-            1.0,
-            1.0,
-            &start_time,
-            modifiers.borrow().clone(),
-        );
+        let egui_frame = egui
+            .render(
+                |ctx| demo_ui.ui(ctx),
+                backend.renderer(),
+                // Just render it over the whole window, but you may limit the area
+                Rectangle::from_loc_and_size((0, 0), size.to_logical(1)),
+                // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
+                1.0,
+                &start_time,
+            )
+            .expect("Failed to render egui");
 
         // Lastly put the rendered frame on the screen
         backend.bind()?;
@@ -154,15 +174,14 @@ fn main() -> Result<()> {
                     [1.0, 1.0, 1.0, 1.0],
                     &[Rectangle::from_loc_and_size((0, 0), size)],
                 )?;
-                unsafe {
-                    egui_frame.draw(
-                        renderer,
-                        frame,
-                        (0.0, 0.0).into(),
-                        1.0.into(),
-                        &[Rectangle::from_loc_and_size((0, 0), size)],
-                    )
-                }
+                egui_frame.draw(
+                    renderer,
+                    frame,
+                    (0, 0).into(),
+                    1.0.into(),
+                    &[Rectangle::from_loc_and_size((0, 0), size)],
+                    &slog_scope::logger(),
+                )
             })?
             .map_err(|err| anyhow::format_err!("{}", err))?;
         backend.submit(None)?;

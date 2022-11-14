@@ -6,7 +6,8 @@ license = "MIT"
 
 [dependencies]
 cgmath = "0.18"
-egui = "0.18.1"
+egui = "0.19.0"
+egui_glow = "0.19.0"
 memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
 slog = { version = "2.7.0", optional = true }
@@ -15,19 +16,19 @@ xkbcommon = "0.4"
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "606d2d5c"
+rev = "8c4c5e4dc5"
 default-features = false
-features = ["renderer_gl", "wayland_frontend"]
+features = ["renderer_glow", "wayland_frontend"]
 
 [features]
-default = ["default_fonts", "render_element"]
+default = ["default_fonts", "desktop_integration"]
 # Let egui bundle some fonts by default.
 default_fonts = ["egui/default_fonts"]
-render_element = ["smithay/desktop", "lazy_static", "slog"]
+desktop_integration = ["smithay/desktop"]
 
 [dev-dependencies]
 anyhow = "1.0"
-egui_demo_lib = "0.18"
+egui_demo_lib = "0.19"
 slog = "2.7"
 slog-term = "2.9"
 slog-scope = "4.4"
@@ -36,6 +37,6 @@ slog-stdlog = "4.1"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "606d2d5c"
+rev = "8c4c5e4dc5"
 default-features = false
-features = ["renderer_gl", "backend_winit", "slog-stdlog"]
+features = ["backend_winit", "slog-stdlog"]

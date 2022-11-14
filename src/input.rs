@@ -1,28 +1,82 @@
+// This file is a light wrapper around libxkbcommon, see the other file for usage
+
 use egui::{Key, Modifiers, PointerButton};
 use smithay::{
     backend::input::MouseButton,
-    wayland::seat::{Keysym as KeysymU32, ModifiersState},
+    input::keyboard::{Keysym as KeysymU32, ModifiersState},
 };
+use xkbcommon::xkb;
+pub use xkbcommon::xkb::{keysyms, Keysym};
+
 use std::convert::TryFrom;
+
+pub struct KbdInternal {
+    keymap: xkb::Keymap,
+    state: xkb::State,
+}
+// SAFETY: This is OK, because all parts of xkb will remain on the same thread
+unsafe impl Send for KbdInternal {}
+
+// focus_hook does not implement debug, so we have to impl Debug manually
+impl std::fmt::Debug for KbdInternal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KbdInternal")
+            .field("keymap", &self.keymap.get_raw_ptr())
+            .field("state", &self.state.get_raw_ptr())
+            .finish()
+    }
+}
+
+impl KbdInternal {
+    pub fn new() -> Option<KbdInternal> {
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let keymap = xkb::Keymap::new_from_names(
+            &context,
+            "",
+            "",
+            "",
+            "",
+            None,
+            xkb::KEYMAP_COMPILE_NO_FLAGS,
+        )?;
+        let state = xkb::State::new(&keymap);
+        Some(KbdInternal { keymap, state })
+    }
+
+    // return true if modifier state has changed
+    pub fn key_input(&mut self, keycode: u32, pressed: bool) {
+        let direction = match pressed {
+            true => xkb::KeyDirection::Down,
+            false => xkb::KeyDirection::Up,
+        };
+
+        // update state (keycode is already offset by 8)
+        self.state.update_key(keycode, direction);
+    }
+
+    pub fn get_utf8(&self, keycode: u32) -> String {
+        self.state.key_get_utf8(keycode)
+    }
+}
 
 /// Converts a set of raw keycodes into [`egui::Key`], if possible.
 pub fn convert_key(keys: impl Iterator<Item = KeysymU32>) -> Option<Key> {
     for sym in keys {
-        if let Ok(key) = Keysym(sym).try_into() {
+        if let Ok(key) = KeysymConv(sym).try_into() {
             return Some(key);
         }
     }
     None
 }
 
-pub struct Keysym(pub KeysymU32);
+pub struct KeysymConv(pub KeysymU32);
 
-impl TryFrom<Keysym> for Key {
+impl TryFrom<KeysymConv> for Key {
     type Error = ();
 
-    fn try_from(sym: Keysym) -> Result<Key, ()> {
+    fn try_from(sym: KeysymConv) -> Result<Key, ()> {
         use egui::Key::*;
-        use smithay::wayland::seat::keysyms::*;
+        use smithay::input::keyboard::keysyms::*;
 
         #[allow(non_upper_case_globals)]
         Ok(match sym.0 {
