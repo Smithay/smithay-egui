@@ -161,7 +161,7 @@ fn main() -> Result<()> {
                 Rectangle::from_loc_and_size((0, 0), size.to_logical(1)),
                 // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
                 1.0,
-                &start_time,
+                start_time.elapsed(),
             )
             .expect("Failed to render egui");
 

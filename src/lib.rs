@@ -228,7 +228,7 @@ impl EguiState {
         renderer: &mut GlowRenderer,
         area: Rectangle<i32, Logical>,
         scale: f64,
-        start_time: &std::time::Instant,
+        duration_since_start: std::time::Duration,
     ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
@@ -278,7 +278,7 @@ impl EguiState {
                 },
             }),
             pixels_per_point: Some(int_scale as f32),
-            time: Some(start_time.elapsed().as_secs_f64()),
+            time: Some(duration_since_start.as_secs_f64()),
             predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(inner.last_modifiers),
             events: inner.events.drain(..).collect(),
