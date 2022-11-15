@@ -325,7 +325,7 @@ impl EguiState {
                         area.size.to_physical(int_scale),
                         Transform::Normal,
                         |_renderer, frame| {
-                            frame.clear([0.1, 0.1, 0.1, 1.0], &[area.to_physical(int_scale)])?;
+                            frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
                             painter.paint_and_update_textures(
                                 [area.size.w as u32, area.size.h as u32],
                                 scale as f32,
