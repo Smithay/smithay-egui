@@ -1,3 +1,4 @@
+use egui::PlatformOutput;
 #[deny(missing_docs)]
 use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect, Vec2};
 use egui_glow::Painter;
@@ -26,6 +27,7 @@ use std::{
     cell::RefCell,
     rc::Rc,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 mod input;
@@ -44,12 +46,12 @@ impl PartialEq for EguiState {
     }
 }
 
-#[derive(Debug)]
 struct EguiInner {
     pointers: usize,
     last_pointer_position: Point<i32, Logical>,
     area: Rectangle<i32, Logical>,
     last_modifiers: ModifiersState,
+    last_output: Option<PlatformOutput>,
     pressed: Vec<(Option<egui::Key>, u32)>,
     focused: bool,
     events: Vec<Event>,
@@ -73,6 +75,7 @@ impl EguiState {
                 last_pointer_position: (0, 0).into(),
                 area,
                 last_modifiers: ModifiersState::default(),
+                last_output: None,
                 events: Vec::new(),
                 focused: false,
                 pressed: Vec::new(),
@@ -228,7 +231,7 @@ impl EguiState {
         renderer: &mut GlowRenderer,
         area: Rectangle<i32, Logical>,
         scale: f64,
-        duration_since_start: std::time::Duration,
+        duration_since_start: Duration,
     ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
@@ -289,76 +292,75 @@ impl EguiState {
         };
 
         let FullOutput {
+            platform_output,
             shapes,
             textures_delta,
-            repaint_after,
             ..
-        } = self.ctx.run(input, ui);
+        } = self.ctx.run(input.clone(), ui);
+        inner.last_output = Some(platform_output);
+
         let needs_recreate = inner.area != area;
-        let needs_repaint = repaint_after.is_zero() || needs_recreate;
         inner.area = area;
 
-        if needs_repaint {
-            if needs_recreate {
-                *render_buffer = {
-                    let render_texture = renderer.create_buffer(
-                        area.size
-                            .to_buffer(int_scale, smithay::utils::Transform::Normal),
-                    )?;
-                    TextureRenderBuffer::from_texture(
-                        renderer,
-                        render_texture,
-                        int_scale,
-                        Transform::Flipped180,
-                        None,
-                    )
-                };
+        if needs_recreate {
+            *render_buffer = {
+                let render_texture = renderer.create_buffer(
+                    area.size
+                        .to_buffer(int_scale, smithay::utils::Transform::Normal),
+                )?;
+                TextureRenderBuffer::from_texture(
+                    renderer,
+                    render_texture,
+                    int_scale,
+                    Transform::Flipped180,
+                    None,
+                )
+            };
+        }
+
+        render_buffer.render().draw(|tex| {
+            if renderer.bind(tex.clone()).is_err() {
+                return Vec::new();
             }
 
-            render_buffer.render().draw(|tex| {
-                if renderer.bind(tex.clone()).is_err() {
-                    return Vec::new();
-                }
+            if renderer
+                .render(
+                    area.size.to_physical(int_scale),
+                    Transform::Normal,
+                    |_renderer, frame| {
+                        frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
+                        painter.paint_and_update_textures(
+                            [area.size.w as u32, area.size.h as u32],
+                            scale as f32,
+                            &self.ctx.tessellate(shapes),
+                            &textures_delta,
+                        );
+                        Ok(())
+                    },
+                )
+                .and_then(|e| e)
+                .is_err()
+            {
+                return Vec::new();
+            }
+            let _ = renderer.unbind();
 
-                if renderer
-                    .render(
-                        area.size.to_physical(int_scale),
-                        Transform::Normal,
-                        |_renderer, frame| {
-                            frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
-                            painter.paint_and_update_textures(
-                                [area.size.w as u32, area.size.h as u32],
-                                scale as f32,
-                                &self.ctx.tessellate(shapes),
-                                &textures_delta,
-                            );
-                            Ok(())
-                        },
-                    )
-                    .and_then(|e| e)
-                    .is_err()
-                {
-                    return Vec::new();
-                }
-                let _ = renderer.unbind();
-
-                let used = self.ctx.used_rect();
-                let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
-                let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
-                let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
-                let offset = margin + Ord::max(window_shadow, popup_shadow);
-                vec![Rectangle::from_extemities(
-                    (
-                        (used.min.x.floor() as i32).saturating_sub(offset),
-                        (used.min.y.floor() as i32).saturating_sub(offset),
-                    ),
-                    (
-                        (used.max.x.ceil() as i32) + (offset * 2),
-                        (used.max.y.ceil() as i32) + (offset * 2),
-                    ),
-                )]
-            });
-        }
+            let used = self.ctx.used_rect();
+            let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
+            let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
+            let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
+            let offset = margin + Ord::max(window_shadow, popup_shadow);
+            vec![Rectangle::from_extemities(
+                (
+                    (used.min.x.floor() as i32).saturating_sub(offset),
+                    (used.min.y.floor() as i32).saturating_sub(offset),
+                ),
+                (
+                    (used.max.x.ceil() as i32) + (offset * 2),
+                    (used.max.y.ceil() as i32) + (offset * 2),
+                ),
+            )]
+        });
 
         Ok(TextureRenderElement::from_texture_render_buffer(
             area.loc.to_f64().to_physical(scale),
@@ -374,6 +376,11 @@ impl EguiState {
     #[cfg(feature = "desktop_integration")]
     pub fn set_zindex(&self, idx: u8) {
         self.inner.lock().unwrap().z_index = idx;
+    }
+
+    /// Returns the egui [`PlatformOutput`] generated by the last [`Self::render`] call
+    pub fn last_output(&self) -> Option<PlatformOutput> {
+        self.inner.lock().unwrap().last_output.take()
     }
 }
 
