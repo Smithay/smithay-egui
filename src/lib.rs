@@ -231,6 +231,7 @@ impl EguiState {
         renderer: &mut GlowRenderer,
         area: Rectangle<i32, Logical>,
         scale: f64,
+        alpha: f32,
         duration_since_start: Duration,
     ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
         let int_scale = scale.ceil() as i32;
@@ -319,11 +320,9 @@ impl EguiState {
         }
 
         render_buffer.render().draw(|tex| {
-            if renderer.bind(tex.clone()).is_err() {
-                return Vec::new();
-            }
+            renderer.bind(tex.clone())?;
 
-            if renderer
+            renderer
                 .render(
                     area.size.to_physical(int_scale),
                     Transform::Normal,
@@ -338,19 +337,15 @@ impl EguiState {
                         Ok(())
                     },
                 )
-                .and_then(|e| e)
-                .is_err()
-            {
-                return Vec::new();
-            }
-            let _ = renderer.unbind();
+                .and_then(|e| e)?;
+            renderer.unbind()?;
 
             let used = self.ctx.used_rect();
             let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
             let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
             let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
             let offset = margin + Ord::max(window_shadow, popup_shadow);
-            vec![Rectangle::from_extemities(
+            Result::<_, Gles2Error>::Ok(vec![Rectangle::from_extemities(
                 (
                     (used.min.x.floor() as i32).saturating_sub(offset),
                     (used.min.y.floor() as i32).saturating_sub(offset),
@@ -359,12 +354,13 @@ impl EguiState {
                     (used.max.x.ceil() as i32) + (offset * 2),
                     (used.max.y.ceil() as i32) + (offset * 2),
                 ),
-            )]
-        });
+            )])
+        })?;
 
         Ok(TextureRenderElement::from_texture_render_buffer(
             area.loc.to_f64().to_physical(scale),
             &render_buffer,
+            Some(alpha),
             None,
             None,
         ))
