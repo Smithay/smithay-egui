@@ -345,7 +345,7 @@ impl EguiState {
             let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
             let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
             let offset = margin + Ord::max(window_shadow, popup_shadow);
-            Result::<_, Gles2Error>::Ok(vec![Rectangle::from_extemities(
+            Result::<_, Gles2Error>::Ok(vec![Rectangle::<i32, Logical>::from_extemities(
                 (
                     (used.min.x.floor() as i32).saturating_sub(offset),
                     (used.min.y.floor() as i32).saturating_sub(offset),
@@ -354,7 +354,8 @@ impl EguiState {
                     (used.max.x.ceil() as i32) + (offset * 2),
                     (used.max.y.ceil() as i32) + (offset * 2),
                 ),
-            )])
+            )
+            .to_buffer(1, Transform::Flipped180, &area.size)])
         })?;
 
         Ok(TextureRenderElement::from_texture_render_buffer(
