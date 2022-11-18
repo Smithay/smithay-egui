@@ -64,6 +64,7 @@ struct GlState {
     painter: Painter,
     render_buffer: TextureRenderBuffer<Gles2Texture>,
 }
+type UserDataType = Rc<RefCell<GlState>>;
 
 impl EguiState {
     /// Creates a new `EguiState`
@@ -236,7 +237,7 @@ impl EguiState {
     ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
-        if user_data.get::<RefCell<GlState>>().is_none() {
+        if user_data.get::<UserDataType>().is_none() {
             let painter = renderer
                 .with_context(|_, context| Painter::new(context.clone(), None, ""))?
                 .map_err(|_| Gles2Error::ShaderCompileError(""))?;
@@ -252,7 +253,7 @@ impl EguiState {
                 None,
             );
             renderer.egl_context().user_data().insert_if_missing(|| {
-                Rc::new(RefCell::new(GlState {
+                UserDataType::new(RefCell::new(GlState {
                     painter,
                     render_buffer,
                 }))
@@ -263,7 +264,7 @@ impl EguiState {
         let gl_state = renderer
             .egl_context()
             .user_data()
-            .get::<Rc<RefCell<GlState>>>()
+            .get::<UserDataType>()
             .unwrap()
             .clone();
         let mut borrow = gl_state.borrow_mut();
