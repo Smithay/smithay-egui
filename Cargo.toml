@@ -8,6 +8,8 @@ license = "MIT"
 cgmath = "0.18"
 egui = "0.19.0"
 egui_glow = "0.19.0"
+egui_extras = { version = "0.19.0", optional = true }
+img = { version = "0.24", default-features = false, optional = true, package = "image" }
 memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
 slog = { version = "2.7.0", optional = true }
@@ -25,6 +27,10 @@ default = ["default_fonts", "desktop_integration"]
 # Let egui bundle some fonts by default.
 default_fonts = ["egui/default_fonts"]
 desktop_integration = ["smithay/desktop"]
+image = ["egui_extras", "img"]
+svg = ["image", "egui_extras/svg"]
+png = ["image", "egui_extras/image", "img/png"]
+jpg = ["image", "egui_extras/image", "img/jpeg"]
 
 [dev-dependencies]
 anyhow = "1.0"

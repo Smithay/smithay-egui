@@ -30,6 +30,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "image")]
+use std::collections::HashMap;
+
 mod input;
 pub use self::input::{convert_button, convert_key, convert_modifiers};
 
@@ -63,6 +66,8 @@ struct EguiInner {
 struct GlState {
     painter: Painter,
     render_buffer: TextureRenderBuffer<Gles2Texture>,
+    #[cfg(feature = "image")]
+    images: HashMap<String, egui_extras::image::RetainedImage>,
 }
 type UserDataType = Rc<RefCell<GlState>>;
 
@@ -256,6 +261,8 @@ impl EguiState {
                 UserDataType::new(RefCell::new(GlState {
                     painter,
                     render_buffer,
+                    #[cfg(feature = "image")]
+                    images: HashMap::new(),
                 }))
             });
         }
@@ -271,6 +278,7 @@ impl EguiState {
         let &mut GlState {
             ref mut painter,
             ref mut render_buffer,
+            ..
         } = &mut *borrow;
 
         let screen_size: Size<i32, Physical> = area.size.to_physical(int_scale);
@@ -366,6 +374,112 @@ impl EguiState {
             None,
             None,
         ))
+    }
+
+    #[cfg(all(feature = "image", any(feature = "png", feature = "jpg")))]
+    pub fn load_image(
+        &self,
+        renderer: &mut GlowRenderer,
+        name: String,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let inner = self.inner.lock().unwrap();
+        let user_data = renderer.egl_context().user_data();
+        if user_data.get::<UserDataType>().is_none() {
+            let painter = renderer
+                .with_context(|_, context| Painter::new(context.clone(), None, ""))
+                .map_err(|err| format!("{}", err))??;
+            let render_texture = renderer
+                .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
+                .map_err(|err| format!("{}", err))?;
+            let render_buffer = TextureRenderBuffer::from_texture(
+                renderer,
+                render_texture,
+                1,
+                Transform::Flipped180,
+                None,
+            );
+            renderer.egl_context().user_data().insert_if_missing(|| {
+                UserDataType::new(RefCell::new(GlState {
+                    painter,
+                    render_buffer,
+                    #[cfg(feature = "image")]
+                    images: HashMap::new(),
+                }))
+            });
+        }
+
+        let gl_state = renderer
+            .egl_context()
+            .user_data()
+            .get::<UserDataType>()
+            .unwrap()
+            .clone();
+        let mut borrow = gl_state.borrow_mut();
+
+        let image = egui_extras::RetainedImage::from_image_bytes(name.clone(), bytes)?;
+        borrow.images.insert(name, image);
+
+        Ok(())
+    }
+
+    #[cfg(all(feature = "image", feature = "svg"))]
+    pub fn load_svg(
+        &self,
+        renderer: &mut GlowRenderer,
+        name: String,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let inner = self.inner.lock().unwrap();
+        let user_data = renderer.egl_context().user_data();
+        if user_data.get::<UserDataType>().is_none() {
+            let painter = renderer
+                .with_context(|_, context| Painter::new(context.clone(), None, ""))
+                .map_err(|err| format!("{}", err))??;
+            let render_texture = renderer
+                .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
+                .map_err(|err| format!("{}", err))?;
+            let render_buffer = TextureRenderBuffer::from_texture(
+                renderer,
+                render_texture,
+                1,
+                Transform::Flipped180,
+                None,
+            );
+            renderer.egl_context().user_data().insert_if_missing(|| {
+                UserDataType::new(RefCell::new(GlState {
+                    painter,
+                    render_buffer,
+                    #[cfg(feature = "image")]
+                    images: HashMap::new(),
+                }))
+            });
+        }
+
+        let gl_state = renderer
+            .egl_context()
+            .user_data()
+            .get::<UserDataType>()
+            .unwrap()
+            .clone();
+        let mut borrow = gl_state.borrow_mut();
+
+        let image = egui_extras::RetainedImage::from_svg_bytes(name.clone(), bytes)?;
+        borrow.images.insert(name, image);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "image")]
+    pub fn with_image<F, R>(&self, renderer: &mut GlowRenderer, name: &str, closure: F) -> Option<R>
+    where
+        F: FnOnce(&egui_extras::RetainedImage, &Context) -> R,
+    {
+        let user_data = renderer.egl_context().user_data();
+        let state = user_data.get::<UserDataType>()?;
+        let state_ref = state.borrow();
+        let img = state_ref.images.get(name)?;
+        Some(closure(img, &self.ctx))
     }
 
     /// Sets the z_index as reported by [`SpaceElement::z_index`].
