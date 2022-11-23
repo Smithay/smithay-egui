@@ -27,7 +27,7 @@ use std::{
     cell::RefCell,
     rc::Rc,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::Instant,
 };
 
 #[cfg(feature = "image")]
@@ -41,6 +41,7 @@ pub use self::input::{convert_button, convert_key, convert_modifiers};
 pub struct EguiState {
     inner: Arc<Mutex<EguiInner>>,
     ctx: Context,
+    start_time: Instant,
 }
 
 impl PartialEq for EguiState {
@@ -76,6 +77,7 @@ impl EguiState {
     pub fn new(area: Rectangle<i32, Logical>) -> EguiState {
         EguiState {
             ctx: Context::default(),
+            start_time: Instant::now(),
             inner: Arc::new(Mutex::new(EguiInner {
                 pointers: 0,
                 last_pointer_position: (0, 0).into(),
@@ -238,7 +240,6 @@ impl EguiState {
         area: Rectangle<i32, Logical>,
         scale: f64,
         alpha: f32,
-        duration_since_start: Duration,
     ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
@@ -291,7 +292,7 @@ impl EguiState {
                 },
             }),
             pixels_per_point: Some(int_scale as f32),
-            time: Some(duration_since_start.as_secs_f64()),
+            time: Some(self.start_time.elapsed().as_secs_f64()),
             predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(inner.last_modifiers),
             events: inner.events.drain(..).collect(),

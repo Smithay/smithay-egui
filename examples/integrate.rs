@@ -46,8 +46,6 @@ fn main() -> Result<()> {
     ));
     // you might also need additional structs to store your ui-state, like the demo_lib does
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
-    // this is likely already part of your ui-state for `send_frames` and similar
-    let start_time = std::time::Instant::now();
 
     let mut seat_state = SeatState::new();
     let mut seat = seat_state.new_seat("seat-0", None);
@@ -162,7 +160,6 @@ fn main() -> Result<()> {
                 // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
                 1.0,
                 1.0,
-                start_time.elapsed(),
             )
             .expect("Failed to render egui");
 
