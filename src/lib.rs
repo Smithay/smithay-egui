@@ -387,9 +387,14 @@ impl EguiState {
         let inner = self.inner.lock().unwrap();
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
-            let painter = renderer
-                .with_context(|_, context| Painter::new(context.clone(), None, ""))
-                .map_err(|err| format!("{}", err))??;
+            let painter = {
+                let mut frame = renderer
+                    .render((1, 1).into(), smithay::utils::Transform::Normal)
+                    .map_err(|err| format!("{}", err))?;
+                frame
+                    .with_context(|context| Painter::new(context.clone(), None, ""))
+                    .map_err(|err| format!("{}", err))??
+            };
             let render_texture = renderer
                 .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
                 .map_err(|err| format!("{}", err))?;
@@ -434,9 +439,14 @@ impl EguiState {
         let inner = self.inner.lock().unwrap();
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
-            let painter = renderer
-                .with_context(|_, context| Painter::new(context.clone(), None, ""))
-                .map_err(|err| format!("{}", err))??;
+            let painter = {
+                let mut frame = renderer
+                    .render((1, 1).into(), smithay::utils::Transform::Normal)
+                    .map_err(|err| format!("{}", err))?;
+                frame
+                    .with_context(|context| Painter::new(context.clone(), None, ""))
+                    .map_err(|err| format!("{}", err))??
+            };
             let render_texture = renderer
                 .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
                 .map_err(|err| format!("{}", err))?;
