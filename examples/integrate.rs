@@ -1,7 +1,12 @@
 use anyhow::Result;
 use smithay::{
     backend::{
-        renderer::{element::RenderElement, glow::GlowRenderer, Frame, Renderer},
+        renderer::{
+            element::{texture::TextureRenderElement, RenderElement},
+            gles2::Gles2Texture,
+            glow::GlowRenderer,
+            Frame, Renderer,
+        },
         winit,
     },
     input::{
@@ -87,7 +92,7 @@ fn main() -> Result<()> {
                     // Winit only produces `PointerMotionAbsolute` events, but a real compositor needs to handle this for `PointerMotion` events as well.
                     // Meaning: you need to compute the absolute position and pass that to egui.
                     InputEvent::PointerMotionAbsolute { event } => {
-                        let pos = dbg!(event.position());
+                        let pos = event.position();
                         pointer.motion(
                             &mut state,
                             Some((egui.clone(), (0, 0).into())),
@@ -151,7 +156,7 @@ fn main() -> Result<()> {
 
         let size = backend.window_size().physical_size;
         // Here we compute the rendered egui frame
-        let egui_frame = egui
+        let egui_frame: TextureRenderElement<Gles2Texture> = egui
             .render(
                 |ctx| demo_ui.ui(ctx),
                 backend.renderer(),
@@ -166,22 +171,21 @@ fn main() -> Result<()> {
         // Lastly put the rendered frame on the screen
         backend.bind()?;
         let renderer = backend.renderer();
-        renderer
-            .render(size, Transform::Flipped180, |renderer, frame| {
-                frame.clear(
-                    [1.0, 1.0, 1.0, 1.0],
-                    &[Rectangle::from_loc_and_size((0, 0), size)],
-                )?;
-                egui_frame.draw(
-                    renderer,
-                    frame,
-                    (0, 0).into(),
-                    1.0.into(),
-                    &[Rectangle::from_loc_and_size((0, 0), size)],
-                    &slog_scope::logger(),
-                )
-            })?
-            .map_err(|err| anyhow::format_err!("{}", err))?;
+        {
+            let mut frame = renderer.render(size, Transform::Flipped180)?;
+            frame.clear(
+                [1.0, 1.0, 1.0, 1.0],
+                &[Rectangle::from_loc_and_size((0, 0), size)],
+            )?;
+            RenderElement::<GlowRenderer>::draw(
+                &egui_frame,
+                &mut frame,
+                (0, 0).into(),
+                1.0.into(),
+                &[Rectangle::from_loc_and_size((0, 0), size)],
+                &slog_scope::logger(),
+            )?;
+        }
         backend.submit(None)?;
     }
 }

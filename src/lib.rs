@@ -244,9 +244,15 @@ impl EguiState {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
-            let painter = renderer
-                .with_context(|_, context| Painter::new(context.clone(), None, ""))?
-                .map_err(|_| Gles2Error::ShaderCompileError(""))?;
+            let painter = {
+                let mut frame = renderer.render(
+                    area.size.to_physical(int_scale),
+                    smithay::utils::Transform::Normal,
+                )?;
+                frame
+                    .with_context(|context| Painter::new(context.clone(), None, ""))?
+                    .map_err(|_| Gles2Error::ShaderCompileError(""))?
+            };
             let render_texture = renderer.create_buffer(
                 area.size
                     .to_buffer(int_scale, smithay::utils::Transform::Normal),
@@ -331,23 +337,17 @@ impl EguiState {
 
         render_buffer.render().draw(|tex| {
             renderer.bind(tex.clone())?;
-
-            renderer
-                .render(
-                    area.size.to_physical(int_scale),
-                    Transform::Normal,
-                    |_renderer, frame| {
-                        frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
-                        painter.paint_and_update_textures(
-                            [area.size.w as u32, area.size.h as u32],
-                            scale as f32,
-                            &self.ctx.tessellate(shapes),
-                            &textures_delta,
-                        );
-                        Ok(())
-                    },
-                )
-                .and_then(|e| e)?;
+            {
+                let mut frame =
+                    renderer.render(area.size.to_physical(int_scale), Transform::Normal)?;
+                frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
+                painter.paint_and_update_textures(
+                    [area.size.w as u32, area.size.h as u32],
+                    scale as f32,
+                    &self.ctx.tessellate(shapes),
+                    &textures_delta,
+                );
+            }
             renderer.unbind()?;
 
             let used = self.ctx.used_rect();
