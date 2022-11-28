@@ -25,13 +25,11 @@ use smithay::{
 
 use std::{
     cell::RefCell,
+    collections::HashMap,
     rc::Rc,
     sync::{Arc, Mutex},
     time::Instant,
 };
-
-#[cfg(feature = "image")]
-use std::collections::HashMap;
 
 mod input;
 pub use self::input::{convert_button, convert_key, convert_modifiers};
@@ -66,7 +64,7 @@ struct EguiInner {
 
 struct GlState {
     painter: Painter,
-    render_buffer: TextureRenderBuffer<Gles2Texture>,
+    render_buffers: HashMap<usize, TextureRenderBuffer<Gles2Texture>>,
     #[cfg(feature = "image")]
     images: HashMap<String, egui_extras::image::RetainedImage>,
 }
@@ -98,6 +96,10 @@ impl EguiState {
                 z_index: RenderZindex::Overlay as u8,
             })),
         }
+    }
+
+    fn id(&self) -> usize {
+        Arc::as_ptr(&self.inner) as usize
     }
 
     /// Retrieve the underlying [`egui::Context`]
@@ -253,21 +255,10 @@ impl EguiState {
                     .with_context(|context| Painter::new(context.clone(), None, ""))?
                     .map_err(|_| Gles2Error::ShaderCompileError(""))?
             };
-            let render_texture = renderer.create_buffer(
-                area.size
-                    .to_buffer(int_scale, smithay::utils::Transform::Normal),
-            )?;
-            let render_buffer = TextureRenderBuffer::from_texture(
-                renderer,
-                render_texture,
-                int_scale,
-                Transform::Flipped180,
-                None,
-            );
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
                     painter,
-                    render_buffer,
+                    render_buffers: HashMap::new(),
                     #[cfg(feature = "image")]
                     images: HashMap::new(),
                 }))
@@ -284,9 +275,25 @@ impl EguiState {
         let mut borrow = gl_state.borrow_mut();
         let &mut GlState {
             ref mut painter,
-            ref mut render_buffer,
+            ref mut render_buffers,
             ..
         } = &mut *borrow;
+
+        let render_buffer = render_buffers.entry(self.id()).or_insert_with(|| {
+            let render_texture = renderer
+                .create_buffer(
+                    area.size
+                        .to_buffer(int_scale, smithay::utils::Transform::Normal),
+                )
+                .expect("Failed to create buffer");
+            TextureRenderBuffer::from_texture(
+                renderer,
+                render_texture,
+                int_scale,
+                Transform::Flipped180,
+                None,
+            )
+        });
 
         let screen_size: Size<i32, Physical> = area.size.to_physical(int_scale);
         let input = RawInput {
@@ -384,7 +391,6 @@ impl EguiState {
         name: String,
         bytes: &[u8],
     ) -> Result<(), String> {
-        let inner = self.inner.lock().unwrap();
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
             let painter = {
@@ -395,20 +401,10 @@ impl EguiState {
                     .with_context(|context| Painter::new(context.clone(), None, ""))
                     .map_err(|err| format!("{}", err))??
             };
-            let render_texture = renderer
-                .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
-                .map_err(|err| format!("{}", err))?;
-            let render_buffer = TextureRenderBuffer::from_texture(
-                renderer,
-                render_texture,
-                1,
-                Transform::Flipped180,
-                None,
-            );
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
                     painter,
-                    render_buffer,
+                    render_buffers: HashMap::new(),
                     #[cfg(feature = "image")]
                     images: HashMap::new(),
                 }))
@@ -436,7 +432,6 @@ impl EguiState {
         name: String,
         bytes: &[u8],
     ) -> Result<(), String> {
-        let inner = self.inner.lock().unwrap();
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
             let painter = {
@@ -447,20 +442,10 @@ impl EguiState {
                     .with_context(|context| Painter::new(context.clone(), None, ""))
                     .map_err(|err| format!("{}", err))??
             };
-            let render_texture = renderer
-                .create_buffer(inner.area.size.to_buffer(1, Transform::Flipped180))
-                .map_err(|err| format!("{}", err))?;
-            let render_buffer = TextureRenderBuffer::from_texture(
-                renderer,
-                render_texture,
-                1,
-                Transform::Flipped180,
-                None,
-            );
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
                     painter,
-                    render_buffer,
+                    render_buffers: HashMap::new(),
                     #[cfg(feature = "image")]
                     images: HashMap::new(),
                 }))
