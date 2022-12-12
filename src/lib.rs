@@ -344,13 +344,13 @@ impl EguiState {
 
         render_buffer.render().draw(|tex| {
             renderer.bind(tex.clone())?;
+            let physical_area = area.to_physical(int_scale);
             {
-                let mut frame =
-                    renderer.render(area.size.to_physical(int_scale), Transform::Normal)?;
-                frame.clear([0.0, 0.0, 0.0, 0.0], &[area.to_physical(int_scale)])?;
+                let mut frame = renderer.render(physical_area.size, Transform::Normal)?;
+                frame.clear([0.0, 0.0, 0.0, 0.0], &[physical_area])?;
                 painter.paint_and_update_textures(
-                    [area.size.w as u32, area.size.h as u32],
-                    scale as f32,
+                    [physical_area.size.w as u32, physical_area.size.h as u32],
+                    int_scale as f32,
                     &self.ctx.tessellate(shapes),
                     &textures_delta,
                 );
@@ -372,7 +372,7 @@ impl EguiState {
                     (used.max.y.ceil() as i32) + (offset * 2),
                 ),
             )
-            .to_buffer(1, Transform::Flipped180, &area.size)])
+            .to_buffer(int_scale, Transform::Flipped180, &area.size)])
         })?;
 
         Ok(TextureRenderElement::from_texture_render_buffer(
