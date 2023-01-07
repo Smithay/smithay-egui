@@ -2,7 +2,7 @@ use anyhow::Result;
 use smithay::{
     backend::{
         renderer::{
-            element::{texture::TextureRenderElement, RenderElement},
+            element::{texture::TextureRenderElement, Element, RenderElement},
             gles2::Gles2Texture,
             glow::GlowRenderer,
             Frame, Renderer,
@@ -180,8 +180,8 @@ fn main() -> Result<()> {
             RenderElement::<GlowRenderer>::draw(
                 &egui_frame,
                 &mut frame,
-                (0, 0).into(),
-                1.0.into(),
+                egui_frame.src(),
+                egui_frame.geometry(1.0.into()),
                 &[Rectangle::from_loc_and_size((0, 0), size)],
                 &slog_scope::logger(),
             )?;
