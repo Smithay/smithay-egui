@@ -252,7 +252,7 @@ impl EguiState {
                     smithay::utils::Transform::Normal,
                 )?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), None, ""))?
+                    .with_context(|context| Painter::new(context.clone(), "", None))?
                     .map_err(|_| Gles2Error::ShaderCompileError(""))?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
@@ -398,7 +398,7 @@ impl EguiState {
                     .render((1, 1).into(), smithay::utils::Transform::Normal)
                     .map_err(|err| format!("{}", err))?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), None, ""))
+                    .with_context(|context| Painter::new(context.clone(), "", None))
                     .map_err(|err| format!("{}", err))??
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
@@ -439,7 +439,7 @@ impl EguiState {
                     .render((1, 1).into(), smithay::utils::Transform::Normal)
                     .map_err(|err| format!("{}", err))?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), None, ""))
+                    .with_context(|context| Painter::new(context.clone(), "", None))
                     .map_err(|err| format!("{}", err))??
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
