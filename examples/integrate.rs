@@ -85,7 +85,7 @@ fn main() -> Result<()> {
                             event.key_code(),
                             event.state(),
                             SERIAL_COUNTER.next_serial(),
-                            event.time(),
+                            event.time_msec(),
                             |_data, _modifiers, _handle| FilterResult::Forward,
                         )
                         .unwrap_or(()),
@@ -99,7 +99,7 @@ fn main() -> Result<()> {
                             &MotionEvent {
                                 location: (pos.x, pos.y).into(),
                                 serial: SERIAL_COUNTER.next_serial(),
-                                time: event.time(),
+                                time: event.time_msec(),
                             },
                         );
                     }
@@ -111,7 +111,7 @@ fn main() -> Result<()> {
                             button: event.button_code(),
                             state: event.state().into(),
                             serial: SERIAL_COUNTER.next_serial(),
-                            time: event.time(),
+                            time: event.time_msec(),
                         },
                     ),
                     // NOTE: you should check with `EguiState::wwants_pointer`, if the pointer is above any egui element before forwarding it.
@@ -128,7 +128,8 @@ fn main() -> Result<()> {
                         let vertical_amount_discrete = event.amount_discrete(Axis::Vertical);
 
                         {
-                            let mut frame = AxisFrame::new(event.time()).source(event.source());
+                            let mut frame =
+                                AxisFrame::new(event.time_msec()).source(event.source());
                             if horizontal_amount != 0.0 {
                                 frame = frame.value(Axis::Horizontal, horizontal_amount);
                                 if let Some(discrete) = horizontal_amount_discrete {

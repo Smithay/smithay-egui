@@ -517,6 +517,14 @@ impl<D: SeatHandler> PointerTarget<D> for EguiState {
         self.handle_pointer_motion(event.location.to_i32_round())
     }
 
+    fn relative_motion(
+        &self,
+        _seat: &smithay::input::Seat<D>,
+        _data: &mut D,
+        _event: &smithay::input::pointer::RelativeMotionEvent,
+    ) {
+    }
+
     fn button(
         &self,
         _seat: &smithay::input::Seat<D>,
