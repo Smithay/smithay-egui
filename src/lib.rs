@@ -253,7 +253,7 @@ impl EguiState {
                 )?;
                 frame
                     .with_context(|context| Painter::new(context.clone(), "", None))?
-                    .map_err(|_| Gles2Error::ShaderCompileError(""))?
+                    .map_err(|_| Gles2Error::ShaderCompileError)?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
