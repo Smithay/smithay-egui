@@ -12,13 +12,13 @@ egui_extras = { version = "0.20", optional = true }
 img = { version = "0.24", default-features = false, optional = true, package = "image" }
 memoffset = "0.6"
 lazy_static = { version = "1.4.0", optional = true }
-slog = { version = "2.7.0", optional = true }
+log = "0.4"
 xkbcommon = "0.4"
 
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "2815e171d8"
+rev = "17db1be688"
 default-features = false
 features = ["renderer_glow", "wayland_frontend"]
 
@@ -35,14 +35,11 @@ jpg = ["image", "egui_extras/image", "img/jpeg"]
 [dev-dependencies]
 anyhow = "1.0"
 egui_demo_lib = "0.20"
-slog = "2.7"
-slog-term = "2.9"
-slog-scope = "4.4"
-slog-stdlog = "4.1"
+tracing-subscriber = "0.3"
 
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "2815e171d8"
+rev = "17db1be688"
 default-features = false
-features = ["backend_winit", "slog-stdlog"]
+features = ["backend_winit"]

@@ -88,7 +88,7 @@ impl EguiState {
                 kbd: match input::KbdInternal::new() {
                     Some(kbd) => Some(kbd),
                     None => {
-                        eprintln!("Failed to initialize keymap for text input in egui.");
+                        log::error!("Failed to initialize keymap for text input in egui.");
                         None
                     }
                 },

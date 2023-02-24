@@ -40,10 +40,10 @@ impl SeatHandler for State {
 
 fn main() -> Result<()> {
     // setup logger
-    let _guard = setup_logger();
+    tracing_subscriber::fmt().compact().init();
     // create a winit-backend
-    let (mut backend, mut input) = winit::init::<GlowRenderer, _>(None)
-        .map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
+    let (mut backend, mut input) =
+        winit::init::<GlowRenderer>().map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
     // create an `EguiState`. Usually this would be part of your global smithay state
     let egui = EguiState::new(Rectangle::from_loc_and_size(
         (0, 0),
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
 
     let mut seat_state = SeatState::new();
-    let mut seat = seat_state.new_seat("seat-0", None);
+    let mut seat = seat_state.new_seat("seat-0");
     let mut state = State(seat_state);
     let keyboard = seat.add_keyboard(XkbConfig::default(), 200, 25)?;
     keyboard.set_focus(&mut state, Some(egui.clone()), SERIAL_COUNTER.next_serial());
@@ -184,29 +184,8 @@ fn main() -> Result<()> {
                 egui_frame.src(),
                 egui_frame.geometry(1.0.into()),
                 &[Rectangle::from_loc_and_size((0, 0), size)],
-                &slog_scope::logger(),
             )?;
         }
         backend.submit(None)?;
     }
-}
-
-fn setup_logger() -> Result<slog_scope::GlobalLoggerGuard> {
-    use slog::Drain;
-
-    let decorator = slog_term::TermDecorator::new().stderr().build();
-    // usually we would not want to use a Mutex here, but this is usefull for a prototype,
-    // to make sure we do not miss any in-flight messages, when we crash.
-    let logger = slog::Logger::root(
-        std::sync::Mutex::new(
-            slog_term::CompactFormat::new(decorator)
-                .build()
-                .ignore_res(),
-        )
-        .fuse(),
-        slog::o!(),
-    );
-    let guard = slog_scope::set_global_logger(logger);
-    slog_stdlog::init().unwrap();
-    Ok(guard)
 }
