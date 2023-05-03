@@ -6,19 +6,19 @@ license = "MIT"
 
 [dependencies]
 cgmath = "0.18"
-egui = "0.20"
-egui_glow = "0.20"
-egui_extras = { version = "0.20", optional = true }
+egui = "0.21"
+egui_glow = "0.21"
+egui_extras = { version = "0.21", optional = true }
 img = { version = "0.24", default-features = false, optional = true, package = "image" }
-memoffset = "0.6"
+memoffset = "0.8"
 lazy_static = { version = "1.4.0", optional = true }
 log = "0.4"
-xkbcommon = "0.4"
+xkbcommon = "0.5"
 
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "17db1be688"
+rev = "9459ddd14e"
 default-features = false
 features = ["renderer_glow", "wayland_frontend"]
 
@@ -34,12 +34,12 @@ jpg = ["image", "egui_extras/image", "img/jpeg"]
 
 [dev-dependencies]
 anyhow = "1.0"
-egui_demo_lib = "0.20"
+egui_demo_lib = "0.21"
 tracing-subscriber = "0.3"
 
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "17db1be688"
+rev = "9459ddd14e"
 default-features = false
 features = ["backend_winit"]

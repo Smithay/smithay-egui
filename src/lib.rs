@@ -6,10 +6,11 @@ use egui_glow::Painter;
 use smithay::desktop::space::SpaceElement;
 use smithay::{
     backend::{
+        allocator::Fourcc,
         input::{ButtonState, Device, DeviceCapability, KeyState, MouseButton},
         renderer::{
             element::texture::{TextureRenderBuffer, TextureRenderElement},
-            gles2::{Gles2Error, Gles2Texture},
+            gles::{GlesError, GlesTexture},
             glow::GlowRenderer,
             Bind, Frame, Offscreen, Renderer, Unbind,
         },
@@ -64,7 +65,7 @@ struct EguiInner {
 
 struct GlState {
     painter: Painter,
-    render_buffers: HashMap<usize, TextureRenderBuffer<Gles2Texture>>,
+    render_buffers: HashMap<usize, TextureRenderBuffer<GlesTexture>>,
     #[cfg(feature = "image")]
     images: HashMap<String, egui_extras::image::RetainedImage>,
 }
@@ -152,6 +153,7 @@ impl EguiState {
             inner.events.push(Event::Key {
                 key,
                 pressed,
+                repeat: false,
                 modifiers: convert_modifiers(modifiers),
             });
             Some(key)
@@ -242,7 +244,7 @@ impl EguiState {
         area: Rectangle<i32, Logical>,
         scale: f64,
         alpha: f32,
-    ) -> Result<TextureRenderElement<Gles2Texture>, Gles2Error> {
+    ) -> Result<TextureRenderElement<GlesTexture>, GlesError> {
         let int_scale = scale.ceil() as i32;
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
@@ -253,7 +255,7 @@ impl EguiState {
                 )?;
                 frame
                     .with_context(|context| Painter::new(context.clone(), "", None))?
-                    .map_err(|_| Gles2Error::ShaderCompileError(""))?
+                    .map_err(|_| GlesError::ShaderCompileError)?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
@@ -282,6 +284,7 @@ impl EguiState {
         let render_buffer = render_buffers.entry(self.id()).or_insert_with(|| {
             let render_texture = renderer
                 .create_buffer(
+                    Fourcc::Abgr8888,
                     area.size
                         .to_buffer(int_scale, smithay::utils::Transform::Normal),
                 )
@@ -329,6 +332,7 @@ impl EguiState {
         if needs_recreate {
             *render_buffer = {
                 let render_texture = renderer.create_buffer(
+                    Fourcc::Abgr8888,
                     area.size
                         .to_buffer(int_scale, smithay::utils::Transform::Normal),
                 )?;
@@ -362,7 +366,7 @@ impl EguiState {
             let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
             let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
             let offset = margin + Ord::max(window_shadow, popup_shadow);
-            Result::<_, Gles2Error>::Ok(vec![Rectangle::<i32, Logical>::from_extemities(
+            Result::<_, GlesError>::Ok(vec![Rectangle::<i32, Logical>::from_extemities(
                 (
                     (used.min.x.floor() as i32).saturating_sub(offset),
                     (used.min.y.floor() as i32).saturating_sub(offset),
@@ -580,6 +584,7 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
                 inner.events.push(Event::Key {
                     key,
                     pressed: true,
+                    repeat: false,
                     modifiers,
                 });
                 Some(key)
@@ -609,6 +614,7 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
                 inner.events.push(Event::Key {
                     key,
                     pressed: false,
+                    repeat: false,
                     modifiers,
                 });
             }

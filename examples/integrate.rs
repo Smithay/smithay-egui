@@ -3,7 +3,7 @@ use smithay::{
     backend::{
         renderer::{
             element::{texture::TextureRenderElement, Element, RenderElement},
-            gles2::Gles2Texture,
+            gles::GlesTexture,
             glow::GlowRenderer,
             Frame, Renderer,
         },
@@ -157,7 +157,7 @@ fn main() -> Result<()> {
 
         let size = backend.window_size().physical_size;
         // Here we compute the rendered egui frame
-        let egui_frame: TextureRenderElement<Gles2Texture> = egui
+        let egui_frame: TextureRenderElement<GlesTexture> = egui
             .render(
                 |ctx| demo_ui.ui(ctx),
                 backend.renderer(),
