@@ -336,7 +336,7 @@ impl EguiState {
             events: inner.events.drain(..).collect(),
             hovered_files: Vec::with_capacity(0),
             dropped_files: Vec::with_capacity(0),
-            has_focus: inner.focused,
+            focused: inner.focused,
             max_texture_side: Some(painter.max_texture_side()), // TODO query from GlState somehow
         };
 
