@@ -27,6 +27,7 @@ use smithay::{
 use std::{
     cell::RefCell,
     collections::HashMap,
+    fmt,
     rc::Rc,
     sync::{Arc, Mutex},
     time::Instant,
@@ -36,7 +37,7 @@ mod input;
 pub use self::input::{convert_button, convert_key, convert_modifiers};
 
 /// smithay-egui state object
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EguiState {
     inner: Arc<Mutex<EguiInner>>,
     ctx: Context,
@@ -61,6 +62,27 @@ struct EguiInner {
     kbd: Option<input::KbdInternal>,
     #[cfg(feature = "desktop_integration")]
     z_index: u8,
+}
+
+impl fmt::Debug for EguiInner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut debug = f.debug_struct("EguiInner");
+        debug
+            .field("pointers", &self.pointers)
+            .field("last_pointer_position", &self.last_pointer_position)
+            .field("area", &self.area)
+            .field("last_modifiers", &self.last_modifiers)
+            // `PlatformOutput` isn't `Debug`, so skip `last_output`
+            .field("pressed", &self.pressed)
+            .field("focused", &self.focused)
+            .field("events", &self.events)
+            .field("kbd", &self.kbd);
+        #[cfg(feature = "desktop_integration")]
+        {
+            debug.field("z_index", &self.z_index);
+        }
+        debug.finish()
+    }
 }
 
 struct GlState {
@@ -314,7 +336,7 @@ impl EguiState {
             events: inner.events.drain(..).collect(),
             hovered_files: Vec::with_capacity(0),
             dropped_files: Vec::with_capacity(0),
-            has_focus: inner.focused,
+            focused: inner.focused,
             max_texture_side: Some(painter.max_texture_side()), // TODO query from GlState somehow
         };
 
