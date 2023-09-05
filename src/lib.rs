@@ -18,10 +18,15 @@ use smithay::{
     desktop::space::RenderZindex,
     input::{
         keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
-        pointer::PointerTarget,
-        SeatHandler,
+        pointer::{
+            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
+            GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
+            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
+            PointerTarget, RelativeMotionEvent,
+        },
+        Seat, SeatHandler,
     },
-    utils::{IsAlive, Logical, Physical, Point, Rectangle, Size, Transform},
+    utils::{IsAlive, Logical, Physical, Point, Rectangle, Serial, Size, Transform},
 };
 
 use std::{
@@ -525,38 +530,17 @@ impl IsAlive for EguiState {
 }
 
 impl<D: SeatHandler> PointerTarget<D> for EguiState {
-    fn enter(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        event: &smithay::input::pointer::MotionEvent,
-    ) {
+    fn enter(&self, _seat: &Seat<D>, _data: &mut D, event: &MotionEvent) {
         self.handle_pointer_motion(event.location.to_i32_floor())
     }
 
-    fn motion(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        event: &smithay::input::pointer::MotionEvent,
-    ) {
+    fn motion(&self, _seat: &Seat<D>, _data: &mut D, event: &MotionEvent) {
         self.handle_pointer_motion(event.location.to_i32_round())
     }
 
-    fn relative_motion(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        _event: &smithay::input::pointer::RelativeMotionEvent,
-    ) {
-    }
+    fn relative_motion(&self, _seat: &Seat<D>, _data: &mut D, _event: &RelativeMotionEvent) {}
 
-    fn button(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        event: &smithay::input::pointer::ButtonEvent,
-    ) {
+    fn button(&self, _seat: &Seat<D>, _data: &mut D, event: &ButtonEvent) {
         if let Some(button) = match event.button {
             0x110 => Some(MouseButton::Left),
             0x111 => Some(MouseButton::Right),
@@ -569,30 +553,34 @@ impl<D: SeatHandler> PointerTarget<D> for EguiState {
         }
     }
 
-    fn axis(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        _frame: smithay::input::pointer::AxisFrame,
-    ) {
+    fn axis(&self, _seat: &Seat<D>, _data: &mut D, _frame: AxisFrame) {
         // TODO
         //self.handle_pointer_axis(frame., y_amount)
     }
 
-    fn leave(
-        &self,
-        _seat: &smithay::input::Seat<D>,
-        _data: &mut D,
-        _serial: smithay::utils::Serial,
-        _time: u32,
-    ) {
-    }
+    fn leave(&self, _seat: &Seat<D>, _data: &mut D, _serial: Serial, _time: u32) {}
+
+    fn gesture_swipe_begin(&self, _: &Seat<D>, _: &mut D, _: &GestureSwipeBeginEvent) {}
+
+    fn gesture_swipe_update(&self, _: &Seat<D>, _: &mut D, _: &GestureSwipeUpdateEvent) {}
+
+    fn gesture_swipe_end(&self, _: &Seat<D>, _: &mut D, _: &GestureSwipeEndEvent) {}
+
+    fn gesture_pinch_begin(&self, _: &Seat<D>, _: &mut D, _: &GesturePinchBeginEvent) {}
+
+    fn gesture_pinch_update(&self, _: &Seat<D>, _: &mut D, _: &GesturePinchUpdateEvent) {}
+
+    fn gesture_pinch_end(&self, _: &Seat<D>, _: &mut D, _: &GesturePinchEndEvent) {}
+
+    fn gesture_hold_begin(&self, _: &Seat<D>, _: &mut D, _: &GestureHoldBeginEvent) {}
+
+    fn gesture_hold_end(&self, _: &Seat<D>, _: &mut D, _: &GestureHoldEndEvent) {}
 }
 
 impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
     fn enter(
         &self,
-        _seat: &smithay::input::Seat<D>,
+        _seat: &Seat<D>,
         _data: &mut D,
         keys: Vec<KeysymHandle<'_>>,
         _serial: smithay::utils::Serial,
@@ -648,11 +636,11 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
 
     fn key(
         &self,
-        _seat: &smithay::input::Seat<D>,
+        _seat: &Seat<D>,
         _data: &mut D,
         key: KeysymHandle<'_>,
-        state: smithay::backend::input::KeyState,
-        _serial: smithay::utils::Serial,
+        state: KeyState,
+        _serial: Serial,
         _time: u32,
     ) {
         let modifiers = self.inner.lock().unwrap().last_modifiers;
@@ -661,10 +649,10 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
 
     fn modifiers(
         &self,
-        _seat: &smithay::input::Seat<D>,
+        _seat: &Seat<D>,
         _data: &mut D,
         modifiers: ModifiersState,
-        _serial: smithay::utils::Serial,
+        _serial: Serial,
     ) {
         self.inner.lock().unwrap().last_modifiers = modifiers;
     }
