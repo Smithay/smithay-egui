@@ -9,7 +9,10 @@ use smithay::{
         allocator::Fourcc,
         input::{ButtonState, Device, DeviceCapability, KeyState, MouseButton},
         renderer::{
-            element::texture::{TextureRenderBuffer, TextureRenderElement},
+            element::{
+                texture::{TextureRenderBuffer, TextureRenderElement},
+                Kind,
+            },
             gles::{GlesError, GlesTexture},
             glow::GlowRenderer,
             Bind, Frame, Offscreen, Renderer, Unbind,
@@ -412,6 +415,7 @@ impl EguiState {
             Some(alpha),
             None,
             None,
+            Kind::Unspecified,
         ))
     }
 
