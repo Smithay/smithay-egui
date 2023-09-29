@@ -13,12 +13,12 @@ img = { version = "0.24", default-features = false, optional = true, package = "
 memoffset = "0.9"
 lazy_static = { version = "1.4.0", optional = true }
 log = "0.4"
-xkbcommon = "0.5"
+xkbcommon = "0.6"
 
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "58d5bdc"
+rev = "74ef59a3f"
 default-features = false
 features = ["renderer_glow", "wayland_frontend"]
 
@@ -40,6 +40,6 @@ tracing-subscriber = "0.3"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "58d5bdc"
+rev = "74ef59a3f"
 default-features = false
 features = ["backend_winit"]

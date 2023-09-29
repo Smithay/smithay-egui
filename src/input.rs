@@ -51,11 +51,11 @@ impl KbdInternal {
         };
 
         // update state (keycode is already offset by 8)
-        self.state.update_key(keycode, direction);
+        self.state.update_key(keycode.into(), direction);
     }
 
     pub fn get_utf8(&self, keycode: u32) -> String {
-        self.state.key_get_utf8(keycode)
+        self.state.key_get_utf8(keycode.into())
     }
 }
 
@@ -76,61 +76,60 @@ impl TryFrom<KeysymConv> for Key {
 
     fn try_from(sym: KeysymConv) -> Result<Key, ()> {
         use egui::Key::*;
-        use smithay::input::keyboard::keysyms::*;
 
         #[allow(non_upper_case_globals)]
         Ok(match sym.0 {
-            KEY_Down => ArrowDown,
-            KEY_Left => ArrowLeft,
-            KEY_Right => ArrowRight,
-            KEY_Up => ArrowUp,
-            KEY_Escape => Escape,
-            KEY_Tab => Tab,
-            KEY_BackSpace => Backspace,
-            KEY_Return => Enter,
-            KEY_space => Space,
-            KEY_Insert => Insert,
-            KEY_Delete => Delete,
-            KEY_Home => Home,
-            KEY_End => End,
-            KEY_Page_Up => PageUp,
-            KEY_Page_Down => PageDown,
-            KEY_0 => Num0,
-            KEY_1 => Num1,
-            KEY_2 => Num2,
-            KEY_3 => Num3,
-            KEY_4 => Num4,
-            KEY_5 => Num5,
-            KEY_6 => Num6,
-            KEY_7 => Num7,
-            KEY_8 => Num8,
-            KEY_9 => Num9,
-            KEY_a => A,
-            KEY_b => B,
-            KEY_c => C,
-            KEY_d => D,
-            KEY_e => E,
-            KEY_f => F,
-            KEY_g => G,
-            KEY_h => H,
-            KEY_i => I,
-            KEY_j => J,
-            KEY_k => K,
-            KEY_l => L,
-            KEY_m => M,
-            KEY_n => N,
-            KEY_o => O,
-            KEY_p => P,
-            KEY_q => Q,
-            KEY_r => R,
-            KEY_s => S,
-            KEY_t => T,
-            KEY_u => U,
-            KEY_v => V,
-            KEY_w => W,
-            KEY_x => X,
-            KEY_y => Y,
-            KEY_z => Z,
+            Keysym::Down => ArrowDown,
+            Keysym::Left => ArrowLeft,
+            Keysym::Right => ArrowRight,
+            Keysym::Up => ArrowUp,
+            Keysym::Escape => Escape,
+            Keysym::Tab => Tab,
+            Keysym::BackSpace => Backspace,
+            Keysym::Return => Enter,
+            Keysym::space => Space,
+            Keysym::Insert => Insert,
+            Keysym::Delete => Delete,
+            Keysym::Home => Home,
+            Keysym::End => End,
+            Keysym::Page_Up => PageUp,
+            Keysym::Page_Down => PageDown,
+            Keysym::_0 => Num0,
+            Keysym::_1 => Num1,
+            Keysym::_2 => Num2,
+            Keysym::_3 => Num3,
+            Keysym::_4 => Num4,
+            Keysym::_5 => Num5,
+            Keysym::_6 => Num6,
+            Keysym::_7 => Num7,
+            Keysym::_8 => Num8,
+            Keysym::_9 => Num9,
+            Keysym::a => A,
+            Keysym::b => B,
+            Keysym::c => C,
+            Keysym::d => D,
+            Keysym::e => E,
+            Keysym::f => F,
+            Keysym::g => G,
+            Keysym::h => H,
+            Keysym::i => I,
+            Keysym::j => J,
+            Keysym::k => K,
+            Keysym::l => L,
+            Keysym::m => M,
+            Keysym::n => N,
+            Keysym::o => O,
+            Keysym::p => P,
+            Keysym::q => Q,
+            Keysym::r => R,
+            Keysym::s => S,
+            Keysym::t => T,
+            Keysym::u => U,
+            Keysym::v => V,
+            Keysym::w => W,
+            Keysym::x => X,
+            Keysym::y => Y,
+            Keysym::z => Z,
             _ => {
                 return Err(());
             }
