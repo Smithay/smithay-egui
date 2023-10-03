@@ -6,7 +6,7 @@ use smithay::{
     input::keyboard::{Keysym as KeysymU32, ModifiersState},
 };
 use xkbcommon::xkb;
-pub use xkbcommon::xkb::{keysyms, Keysym};
+pub use xkbcommon::xkb::{keysyms, Keycode, Keysym};
 
 use std::convert::TryFrom;
 
@@ -51,11 +51,11 @@ impl KbdInternal {
         };
 
         // update state (keycode is already offset by 8)
-        self.state.update_key(keycode.into(), direction);
+        self.state.update_key(Keycode::new(keycode), direction);
     }
 
     pub fn get_utf8(&self, keycode: u32) -> String {
-        self.state.key_get_utf8(keycode.into())
+        self.state.key_get_utf8(Keycode::new(keycode))
     }
 }
 
