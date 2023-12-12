@@ -339,15 +339,12 @@ impl EguiState {
                     y: screen_size.h as f32,
                 },
             }),
-            pixels_per_point: Some(int_scale as f32),
             time: Some(self.start_time.elapsed().as_secs_f64()),
-            predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(inner.last_modifiers),
             events: inner.events.drain(..).collect(),
-            hovered_files: Vec::with_capacity(0),
-            dropped_files: Vec::with_capacity(0),
             focused: inner.focused,
             max_texture_side: Some(painter.max_texture_side()), // TODO query from GlState somehow
+            ..Default::default()
         };
 
         let FullOutput {
@@ -387,7 +384,7 @@ impl EguiState {
                 painter.paint_and_update_textures(
                     [physical_area.size.w as u32, physical_area.size.h as u32],
                     int_scale as f32,
-                    &self.ctx.tessellate(shapes),
+                    &self.ctx.tessellate(shapes, int_scale as f32),
                     &textures_delta,
                 );
             }
