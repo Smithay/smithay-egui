@@ -184,6 +184,7 @@ impl EguiState {
         let key = if let Some(key) = convert_key(handle.raw_syms().iter().copied()) {
             inner.events.push(Event::Key {
                 key,
+                physical_key: None,
                 pressed,
                 repeat: false,
                 modifiers: convert_modifiers(modifiers),
@@ -247,10 +248,16 @@ impl EguiState {
     ///       instead of normal clients, check [`EguiState::wants_pointer`] to figure out,
     ///       if there is an egui-element below your pointer.
     pub fn handle_pointer_axis(&self, x_amount: f64, y_amount: f64) {
-        self.inner.lock().unwrap().events.push(Event::Scroll(Vec2 {
-            x: x_amount as f32,
-            y: y_amount as f32,
-        }))
+        let mut inner = self.inner.lock().unwrap();
+        let modifiers = convert_modifiers(inner.last_modifiers);
+        inner.events.push(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2 {
+                x: x_amount as f32,
+                y: y_amount as f32,
+            },
+            modifiers,
+        })
     }
 
     /// Set if this [`EguiState`] should consider itself focused
@@ -271,7 +278,7 @@ impl EguiState {
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
     pub fn render(
         &self,
-        ui: impl FnOnce(&Context),
+        ui: impl FnMut(&Context),
         renderer: &mut GlowRenderer,
         area: Rectangle<i32, Logical>,
         scale: f64,
@@ -286,7 +293,7 @@ impl EguiState {
                     smithay::utils::Transform::Normal,
                 )?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), "", None))?
+                    .with_context(|context| Painter::new(context.clone(), "", None, false))?
                     .map_err(|_| GlesError::ShaderCompileError)?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
@@ -339,15 +346,12 @@ impl EguiState {
                     y: screen_size.h as f32,
                 },
             }),
-            pixels_per_point: Some(int_scale as f32),
             time: Some(self.start_time.elapsed().as_secs_f64()),
-            predicted_dt: 1.0 / 60.0,
             modifiers: convert_modifiers(inner.last_modifiers),
             events: inner.events.drain(..).collect(),
-            hovered_files: Vec::with_capacity(0),
-            dropped_files: Vec::with_capacity(0),
             focused: inner.focused,
             max_texture_side: Some(painter.max_texture_side()), // TODO query from GlState somehow
+            ..Default::default()
         };
 
         let FullOutput {
@@ -387,7 +391,7 @@ impl EguiState {
                 painter.paint_and_update_textures(
                     [physical_area.size.w as u32, physical_area.size.h as u32],
                     int_scale as f32,
-                    &self.ctx.tessellate(shapes),
+                    &self.ctx.tessellate(shapes, int_scale as f32),
                     &textures_delta,
                 );
             }
@@ -395,8 +399,24 @@ impl EguiState {
 
             let used = self.ctx.used_rect();
             let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
-            let window_shadow = self.ctx.style().visuals.window_shadow.extrusion.ceil() as i32;
-            let popup_shadow = self.ctx.style().visuals.popup_shadow.extrusion.ceil() as i32;
+            let window_shadow = self
+                .ctx
+                .style()
+                .visuals
+                .window_shadow
+                .margin()
+                .sum()
+                .max_elem()
+                .ceil() as i32;
+            let popup_shadow = self
+                .ctx
+                .style()
+                .visuals
+                .popup_shadow
+                .margin()
+                .sum()
+                .max_elem()
+                .ceil() as i32;
             let offset = margin + Ord::max(window_shadow, popup_shadow);
             Result::<_, GlesError>::Ok(vec![Rectangle::<i32, Logical>::from_extemities(
                 (
@@ -435,8 +455,9 @@ impl EguiState {
                     .render((1, 1).into(), smithay::utils::Transform::Normal)
                     .map_err(|err| format!("{}", err))?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), "", None))
-                    .map_err(|err| format!("{}", err))??
+                    .with_context(|context| Painter::new(context.clone(), "", None, false))
+                    .map_err(|err| format!("{}", err))?
+                    .map_err(|err| format!("{}", err))?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
@@ -476,8 +497,9 @@ impl EguiState {
                     .render((1, 1).into(), smithay::utils::Transform::Normal)
                     .map_err(|err| format!("{}", err))?;
                 frame
-                    .with_context(|context| Painter::new(context.clone(), "", None))
-                    .map_err(|err| format!("{}", err))??
+                    .with_context(|context| Painter::new(context.clone(), "", None, false))
+                    .map_err(|err| format!("{}", err))?
+                    .map_err(|err| format!("{}", err))?
             };
             renderer.egl_context().user_data().insert_if_missing(|| {
                 UserDataType::new(RefCell::new(GlState {
@@ -609,6 +631,7 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
                 let modifiers = convert_modifiers(inner.last_modifiers);
                 inner.events.push(Event::Key {
                     key,
+                    physical_key: None,
                     pressed: true,
                     repeat: false,
                     modifiers,
@@ -634,6 +657,7 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
                 let modifiers = convert_modifiers(inner.last_modifiers);
                 inner.events.push(Event::Key {
                     key,
+                    physical_key: None,
                     pressed: false,
                     repeat: false,
                     modifiers,
