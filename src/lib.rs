@@ -383,7 +383,7 @@ impl EguiState {
             let physical_area = area.to_physical(int_scale);
             {
                 let mut frame = renderer.render(physical_area.size, Transform::Normal)?;
-                frame.clear([0.0, 0.0, 0.0, 0.0], &[physical_area])?;
+                frame.clear([0.0, 0.0, 0.0, 0.0].into(), &[physical_area])?;
                 painter.paint_and_update_textures(
                     [physical_area.size.w as u32, physical_area.size.h as u32],
                     int_scale as f32,

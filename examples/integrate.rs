@@ -14,6 +14,7 @@ use smithay::{
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
         SeatHandler, SeatState,
     },
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Rectangle, Transform, SERIAL_COUNTER},
 };
 use smithay_egui::EguiState;
@@ -33,6 +34,7 @@ struct State(SeatState<State>);
 impl SeatHandler for State {
     type KeyboardFocus = EguiState;
     type PointerFocus = EguiState;
+    type TouchFocus = WlSurface;
     fn seat_state(&mut self) -> &mut SeatState<Self> {
         &mut self.0
     }
@@ -47,7 +49,7 @@ fn main() -> Result<()> {
     // create an `EguiState`. Usually this would be part of your global smithay state
     let egui = EguiState::new(Rectangle::from_loc_and_size(
         (0, 0),
-        backend.window_size().physical_size.to_logical(1),
+        backend.window_size().to_logical(1),
     ));
     // you might also need additional structs to store your ui-state, like the demo_lib does
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
@@ -95,7 +97,7 @@ fn main() -> Result<()> {
                         let pos = event.position();
                         pointer.motion(
                             &mut state,
-                            Some((egui.clone(), (0, 0).into())),
+                            Some((egui.clone(), (0., 0.).into())),
                             &MotionEvent {
                                 location: (pos.x, pos.y).into(),
                                 serial: SERIAL_COUNTER.next_serial(),
@@ -119,13 +121,13 @@ fn main() -> Result<()> {
                     InputEvent::PointerAxis { event } => {
                         let horizontal_amount =
                             event.amount(Axis::Horizontal).unwrap_or_else(|| {
-                                event.amount_discrete(Axis::Horizontal).unwrap_or(0.0) * 3.0
+                                event.amount_v120(Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
                             });
                         let vertical_amount = event.amount(Axis::Vertical).unwrap_or_else(|| {
-                            event.amount_discrete(Axis::Vertical).unwrap_or(0.0) * 3.0
+                            event.amount_v120(Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.
                         });
-                        let horizontal_amount_discrete = event.amount_discrete(Axis::Horizontal);
-                        let vertical_amount_discrete = event.amount_discrete(Axis::Vertical);
+                        let horizontal_amount_discrete = event.amount_v120(Axis::Horizontal);
+                        let vertical_amount_discrete = event.amount_v120(Axis::Vertical);
 
                         {
                             let mut frame =
@@ -133,7 +135,7 @@ fn main() -> Result<()> {
                             if horizontal_amount != 0.0 {
                                 frame = frame.value(Axis::Horizontal, horizontal_amount);
                                 if let Some(discrete) = horizontal_amount_discrete {
-                                    frame = frame.discrete(Axis::Horizontal, discrete as i32);
+                                    frame = frame.v120(Axis::Horizontal, discrete as i32);
                                 }
                             } else if event.source() == AxisSource::Finger {
                                 frame = frame.stop(Axis::Horizontal);
@@ -141,7 +143,7 @@ fn main() -> Result<()> {
                             if vertical_amount != 0.0 {
                                 frame = frame.value(Axis::Vertical, vertical_amount);
                                 if let Some(discrete) = vertical_amount_discrete {
-                                    frame = frame.discrete(Axis::Vertical, discrete as i32);
+                                    frame = frame.v120(Axis::Vertical, discrete as i32);
                                 }
                             } else if event.source() == AxisSource::Finger {
                                 frame = frame.stop(Axis::Vertical);
@@ -153,9 +155,9 @@ fn main() -> Result<()> {
                 },
                 _ => {}
             }
-        })?;
+        });
 
-        let size = backend.window_size().physical_size;
+        let size = backend.window_size();
         // Here we compute the rendered egui frame
         let egui_frame: TextureRenderElement<GlesTexture> = egui
             .render(
@@ -175,7 +177,7 @@ fn main() -> Result<()> {
         {
             let mut frame = renderer.render(size, Transform::Flipped180)?;
             frame.clear(
-                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0].into(),
                 &[Rectangle::from_loc_and_size((0, 0), size)],
             )?;
             RenderElement::<GlowRenderer>::draw(
@@ -184,6 +186,7 @@ fn main() -> Result<()> {
                 egui_frame.src(),
                 egui_frame.geometry(1.0.into()),
                 &[Rectangle::from_loc_and_size((0, 0), size)],
+                &[],
             )?;
         }
         backend.submit(None)?;

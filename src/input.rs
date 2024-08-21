@@ -6,7 +6,7 @@ use smithay::{
     input::keyboard::{Keysym as KeysymU32, ModifiersState},
 };
 use xkbcommon::xkb;
-pub use xkbcommon::xkb::{keysyms, Keycode, Keysym};
+pub use xkbcommon::xkb::{Keycode, Keysym};
 
 use std::convert::TryFrom;
 
