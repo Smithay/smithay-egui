@@ -47,10 +47,7 @@ fn main() -> Result<()> {
     let (mut backend, mut input) =
         winit::init::<GlowRenderer>().map_err(|_| anyhow::anyhow!("Winit failed to start"))?;
     // create an `EguiState`. Usually this would be part of your global smithay state
-    let egui = EguiState::new(Rectangle::from_loc_and_size(
-        (0, 0),
-        backend.window_size().to_logical(1),
-    ));
+    let egui = EguiState::new(Rectangle::from_size(backend.window_size().to_logical(1)));
     // you might also need additional structs to store your ui-state, like the demo_lib does
     let mut demo_ui = egui_demo_lib::DemoWindows::default();
 
@@ -164,7 +161,7 @@ fn main() -> Result<()> {
                 |ctx| demo_ui.ui(ctx),
                 backend.renderer(),
                 // Just render it over the whole window, but you may limit the area
-                Rectangle::from_loc_and_size((0, 0), size.to_logical(1)),
+                Rectangle::from_size(size.to_logical(1)),
                 // we also completely ignore the scale *everywhere* in this example, but egui is HiDPI-ready
                 1.0,
                 1.0,
@@ -176,16 +173,13 @@ fn main() -> Result<()> {
         let renderer = backend.renderer();
         {
             let mut frame = renderer.render(size, Transform::Flipped180)?;
-            frame.clear(
-                [1.0, 1.0, 1.0, 1.0].into(),
-                &[Rectangle::from_loc_and_size((0, 0), size)],
-            )?;
+            frame.clear([1.0, 1.0, 1.0, 1.0].into(), &[Rectangle::from_size(size)])?;
             RenderElement::<GlowRenderer>::draw(
                 &egui_frame,
                 &mut frame,
                 egui_frame.src(),
                 egui_frame.geometry(1.0.into()),
-                &[Rectangle::from_loc_and_size((0, 0), size)],
+                &[Rectangle::from_size(size)],
                 &[],
             )?;
         }
