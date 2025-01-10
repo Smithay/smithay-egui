@@ -18,7 +18,7 @@ xkbcommon = "0.8"
 [dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "3b0ecce"
+rev = "fe31867"
 default-features = false
 features = ["renderer_glow", "wayland_frontend"]
 
@@ -40,6 +40,6 @@ tracing-subscriber = "0.3"
 [dev-dependencies.smithay]
 version = "0.3"
 git = "https://github.com/Smithay/smithay.git"
-rev = "3b0ecce"
+rev = "fe31867"
 default-features = false
 features = ["backend_winit"]
