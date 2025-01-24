@@ -16,9 +16,7 @@ log = "0.4"
 xkbcommon = "0.8"
 
 [dependencies.smithay]
-version = "0.3"
-git = "https://github.com/Smithay/smithay.git"
-rev = "fe31867"
+version = "0.4"
 default-features = false
 features = ["renderer_glow", "wayland_frontend"]
 
@@ -38,8 +36,6 @@ egui_demo_lib = "0.30"
 tracing-subscriber = "0.3"
 
 [dev-dependencies.smithay]
-version = "0.3"
-git = "https://github.com/Smithay/smithay.git"
-rev = "fe31867"
+version = "0.4"
 default-features = false
 features = ["backend_winit"]
