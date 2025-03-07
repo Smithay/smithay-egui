@@ -418,7 +418,7 @@ impl EguiState {
                 .max_elem()
                 .ceil() as i32;
             let offset = margin + Ord::max(window_shadow, popup_shadow);
-            Result::<_, GlesError>::Ok(vec![Rectangle::<i32, Logical>::from_extemities(
+            Result::<_, GlesError>::Ok(vec![Rectangle::<i32, Logical>::from_extremities(
                 (
                     (used.min.x.floor() as i32).saturating_sub(offset),
                     (used.min.y.floor() as i32).saturating_sub(offset),
