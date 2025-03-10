@@ -169,10 +169,9 @@ fn main() -> Result<()> {
             .expect("Failed to render egui");
 
         // Lastly put the rendered frame on the screen
-        backend.bind()?;
-        let renderer = backend.renderer();
+        let (renderer, mut fb) = backend.bind()?;
         {
-            let mut frame = renderer.render(size, Transform::Flipped180)?;
+            let mut frame = renderer.render(&mut fb, size, Transform::Flipped180)?;
             frame.clear([1.0, 1.0, 1.0, 1.0].into(), &[Rectangle::from_size(size)])?;
             RenderElement::<GlowRenderer>::draw(
                 &egui_frame,
@@ -183,6 +182,8 @@ fn main() -> Result<()> {
                 &[],
             )?;
         }
+        std::mem::drop(fb);
+
         backend.submit(None)?;
     }
 }

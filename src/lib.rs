@@ -15,7 +15,7 @@ use smithay::{
             },
             gles::{GlesError, GlesTexture},
             glow::GlowRenderer,
-            Bind, Frame, Offscreen, Renderer, Unbind,
+            Bind, Frame, Offscreen, Renderer,
         },
     },
     desktop::space::RenderZindex,
@@ -288,11 +288,7 @@ impl EguiState {
         let user_data = renderer.egl_context().user_data();
         if user_data.get::<UserDataType>().is_none() {
             let painter = {
-                let mut frame = renderer.render(
-                    area.size.to_physical(int_scale),
-                    smithay::utils::Transform::Normal,
-                )?;
-                frame
+                renderer
                     .with_context(|context| Painter::new(context.clone(), "", None, false))?
                     .map_err(|_| GlesError::ShaderCompileError)?
             };
@@ -383,10 +379,10 @@ impl EguiState {
         }
 
         render_buffer.render().draw(|tex| {
-            renderer.bind(tex.clone())?;
+            let mut fb = renderer.bind(tex)?;
             let physical_area = area.to_physical(int_scale);
             {
-                let mut frame = renderer.render(physical_area.size, Transform::Normal)?;
+                let mut frame = renderer.render(&mut fb, physical_area.size, Transform::Normal)?;
                 frame.clear([0.0, 0.0, 0.0, 0.0].into(), &[physical_area])?;
                 painter.paint_and_update_textures(
                     [physical_area.size.w as u32, physical_area.size.h as u32],
@@ -395,7 +391,6 @@ impl EguiState {
                     &textures_delta,
                 );
             }
-            renderer.unbind()?;
 
             let used = self.ctx.used_rect();
             let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
