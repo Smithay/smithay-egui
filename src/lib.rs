@@ -1,6 +1,6 @@
-use egui::PlatformOutput;
 #[deny(missing_docs)]
 use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect, Vec2};
+use egui::{PlatformOutput, ViewportId, ViewportInfo};
 use egui_glow::Painter;
 #[cfg(feature = "desktop_integration")]
 use smithay::desktop::space::SpaceElement;
@@ -334,6 +334,15 @@ impl EguiState {
 
         let screen_size: Size<i32, Physical> = area.size.to_physical(int_scale);
         let input = RawInput {
+            viewport_id: ViewportId::ROOT,
+            viewports: std::iter::once((
+                ViewportId::ROOT,
+                ViewportInfo {
+                    native_pixels_per_point: Some(int_scale as f32),
+                    ..Default::default()
+                },
+            ))
+            .collect(),
             screen_rect: Some(Rect {
                 min: Pos2 { x: 0.0, y: 0.0 },
                 max: Pos2 {
