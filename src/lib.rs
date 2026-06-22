@@ -1,5 +1,5 @@
 #[deny(missing_docs)]
-use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect, Vec2};
+use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect, Ui, Vec2};
 use egui::{PlatformOutput, ViewportId, ViewportInfo};
 use egui_glow::Painter;
 #[cfg(feature = "desktop_integration")]
@@ -142,7 +142,7 @@ impl EguiState {
 
     /// If true, egui is currently listening on text input (e.g. typing text in a TextEdit).
     pub fn wants_keyboard(&self) -> bool {
-        self.ctx.wants_keyboard_input()
+        self.ctx.egui_wants_keyboard_input()
     }
 
     /// True if egui is currently interested in the pointer (mouse or touch).
@@ -150,7 +150,7 @@ impl EguiState {
     /// If false, the pointer is outside of any egui area and so you may want to forward it to other clients as usual.
     /// Returns false if a drag started outside of egui and then moved over an egui area.
     pub fn wants_pointer(&self) -> bool {
-        self.ctx.wants_pointer_input()
+        self.ctx.egui_wants_pointer_input()
     }
 
     /// Pass new input devices to `EguiState` for internal tracking
@@ -257,6 +257,7 @@ impl EguiState {
                 y: y_amount as f32,
             },
             modifiers,
+            phase: egui::TouchPhase::Move,
         })
     }
 
@@ -278,7 +279,7 @@ impl EguiState {
     /// - `modifiers` should be the current state of modifiers pressed on the keyboards.
     pub fn render(
         &self,
-        ui: impl FnMut(&Context),
+        ui: impl FnMut(&mut Ui),
         renderer: &mut GlowRenderer,
         area: Rectangle<i32, Logical>,
         scale: f64,
@@ -362,7 +363,7 @@ impl EguiState {
             shapes,
             textures_delta,
             ..
-        } = self.ctx.run(input.clone(), ui);
+        } = self.ctx.run_ui(input.clone(), ui);
         inner.last_output = Some(platform_output);
 
         let needs_recreate = inner.area != area;
@@ -399,11 +400,11 @@ impl EguiState {
                 );
             }
 
-            let used = self.ctx.used_rect();
-            let margin = self.ctx.style().visuals.clip_rect_margin.ceil() as i32;
+            let used = self.ctx.globally_used_rect();
+            let margin = self.ctx.global_style().visuals.clip_rect_margin.ceil() as i32;
             let window_shadow = self
                 .ctx
-                .style()
+                .global_style()
                 .visuals
                 .window_shadow
                 .margin()
@@ -412,7 +413,7 @@ impl EguiState {
                 .ceil() as i32;
             let popup_shadow = self
                 .ctx
-                .style()
+                .global_style()
                 .visuals
                 .popup_shadow
                 .margin()

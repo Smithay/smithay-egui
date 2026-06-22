@@ -7,14 +7,14 @@ description = "Integration for using egui in smithay"
 
 [dependencies]
 cgmath = "0.18"
-egui = "0.31"
-egui_glow = "0.31"
-egui_extras = { version = "0.31", optional = true }
+egui = "0.34"
+egui_glow = "0.34"
+egui_extras = { version = "0.34", optional = true }
 img = { version = "0.25", default-features = false, optional = true, package = "image" }
 memoffset = "0.9"
 lazy_static = { version = "1.4.0", optional = true }
 log = "0.4"
-xkbcommon = "0.8"
+xkbcommon = "0.9"
 
 [dependencies.smithay]
 version = "0.7"
@@ -33,7 +33,7 @@ jpg = ["image", "egui_extras/image", "img/jpeg"]
 
 [dev-dependencies]
 anyhow = "1.0"
-egui_demo_lib = "0.31"
+egui_demo_lib = "0.34"
 tracing-subscriber = "0.3"
 
 [dev-dependencies.smithay]
