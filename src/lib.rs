@@ -7,7 +7,7 @@ use smithay::desktop::space::{RenderZindex, SpaceElement};
 use smithay::{
     backend::{
         allocator::Fourcc,
-        input::{ButtonState, Device, DeviceCapability, KeyState, MouseButton},
+        input::{ButtonState, Device, DeviceCapability, InputTime, KeyState, MouseButton},
         renderer::{
             element::{
                 texture::{TextureRenderBuffer, TextureRenderElement},
@@ -492,7 +492,7 @@ impl<D: SeatHandler> PointerTarget<D> for EguiState {
         //self.handle_pointer_axis(frame., y_amount)
     }
 
-    fn leave(&self, _seat: &Seat<D>, _data: &mut D, _serial: Serial, _time: u32) {}
+    fn leave(&self, _seat: &Seat<D>, _data: &mut D, _serial: Serial, _time: InputTime) {}
 
     fn frame(&self, _seat: &Seat<D>, _data: &mut D) {}
 
@@ -582,7 +582,7 @@ impl<D: SeatHandler> KeyboardTarget<D> for EguiState {
         key: KeysymHandle<'_>,
         state: KeyState,
         _serial: Serial,
-        _time: u32,
+        _time: InputTime,
     ) {
         let modifiers = self.inner.lock().unwrap().last_modifiers;
         self.handle_keyboard(&key, state == KeyState::Pressed, modifiers)
